@@ -1,0 +1,5 @@
+[env]
+# 沙盒环境
+DOMAIN = "https://sandbox.api.sgroup.qq.com"
+# 正式环境
+# DOMAIN = "https://api.sgroup.qq.com"
