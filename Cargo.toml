@@ -9,9 +9,11 @@ edition = "2021"
 
 [dependencies]
 serde_repr = "0.1.9"
-serde_with = "2.0.1"
+serde_with = "3"
 hyper = "0.14.20"
 http = "0.2.8"
+env_logger = "0.10.0"
+log = "0.4.17"
 
 [dependencies.serde]
 version = "1.0.145"
@@ -29,10 +31,10 @@ version = "0.11.12"
 features = ["json"]
 
 [dependencies.tungstenite]
-version = "0.17.2"
+version = "0.18"
 
 [dependencies.tokio-tungstenite]
-version = "0.17.2"
+version = "0.18"
 features = ["native-tls"]
 
 [dependencies.futures-util]
@@ -45,7 +47,3 @@ features = ["rt", "macros", "rt-multi-thread"]
 [dependencies-dev.tokio]
 version = "1.21.2"
 features = ["rt", "macros", "rt-multi-thread"]
-
-[[bin]]
-name = "ws_client"
-path = "./example/ws_client"

@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
-use crate::api::{Authorization, Api};
+use crate::api::{Authority, Api, Response};
 use reqwest::{Url, ClientBuilder};
+
+mod message;
 
 #[derive(Clone, Debug)]
 pub struct ApiClient {
@@ -11,7 +13,7 @@ pub struct ApiClient {
 
 impl ApiClient {
     /// 仅仅提供授权，构建一个默认的客户端
-    pub fn new(auth: Authorization) -> Self {
+    pub fn new(auth: Authority) -> Self {
         let client = ClientBuilder::new().https_only(true).build().unwrap();
         let auth_header = auth.header();
         Self {
@@ -21,7 +23,7 @@ impl ApiClient {
     }
 
     /// 自己提供一个客户端
-    pub fn from_client(client: reqwest::Client, auth: Authorization) -> Self {
+    pub fn from_client(client: reqwest::Client, auth: Authority) -> Self {
         let auth_header = auth.header();
         Self {
             client,
@@ -36,7 +38,7 @@ impl ApiClient {
     }
 
     /// 设置新授权
-    pub fn set_auth(&mut self, auth: Authorization) {
+    pub fn set_auth(&mut self, auth: Authority) {
         let auth_header = auth.header();
         self.auth_header = auth_header;
     }
@@ -47,13 +49,14 @@ impl ApiClient {
     /// ```
     /// let resp = client.send::<Getway>::(&()).await?
     /// ```
-    pub async fn send<A:Api>(&self, request: &A::Request) -> Result<A::Response, reqwest::Error> {
-        let url = Url::parse(format!("{}{}", env!("DOMAIN"), A::PATH).as_str()).unwrap();
+    pub async fn send<A:Api>(&self, request: &A::Request) -> Result<Response<A::Response>, reqwest::Error> {
+        let url = Url::parse(format!("{}{}", env!("DOMAIN"), A::path(request)).as_str()).unwrap();
+        log::debug!("send request: {json} to {url}", json=serde_json::to_string_pretty(request).unwrap());
         let resp = self.client
             .request(A::METHOD, url)
             .header(http::header::AUTHORIZATION, self.auth_header.as_str())
             .json(request)
             .send().await?;
-        resp.json::<A::Response>().await
+        resp.json::<Response<A::Response>>().await
     }
 }

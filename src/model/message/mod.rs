@@ -8,15 +8,34 @@ use time::{
 
 mod markdown;
 pub use markdown::*;
-
+pub use message_id::*;
+mod message_content;
+pub use message_content::*;
 mod inline_key_board;
+mod message_id;
+#[cfg(test)]
+mod tests;
 pub use inline_key_board::*;
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MessageDescriptor {
+    /// 子频道id
+    channel_id: u64,
+    /// 消息id
+    message_id: MessageId,
+}
+
+impl MessageDescriptor {
+    pub fn into_sub_path(&self) -> String {
+        format!("channels/{}/messages/{}", self.channel_id, self.message_id)
+    }
+}
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Message {
+pub struct MessageRecieved {
     /// 消息 id， 这里是64*3 = 192为十六进制数字
-    pub id: String,
+    pub id: MessageId,
     #[serde_as(as = "DisplayFromStr")]
     /// 子频道 id
     pub channel_id: u64,
@@ -25,10 +44,18 @@ pub struct Message {
     pub guild_id: u64,
     /// 消息内容
     pub content: String,
-    #[serde(serialize_with = "isoser", deserialize_with = "isodeser", default="crate::utils::unix_time_zero")]
+    #[serde(
+        serialize_with = "isoser",
+        deserialize_with = "isodeser",
+        default = "crate::utils::unix_time_zero"
+    )]
     /// 消息创建时间
     pub timestamp: OffsetDateTime,
-    #[serde(serialize_with = "isoser", deserialize_with = "isodeser", default="crate::utils::unix_time_zero")]
+    #[serde(
+        serialize_with = "isoser",
+        deserialize_with = "isodeser",
+        default = "crate::utils::unix_time_zero"
+    )]
     /// 消息编辑时间
     pub edited_timestamp: OffsetDateTime,
     #[serde(default)]
@@ -45,8 +72,9 @@ pub struct Message {
     #[serde(default)]
     /// 消息中@的人
     pub mentions: Vec<User>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     /// 消息创建者的member信息
-    pub member: Member,
+    pub member: Option<Member>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// ark消息
     pub ark: Option<MessageArk>,
@@ -62,6 +90,18 @@ pub struct Message {
     #[serde_as(as = "Option<DisplayFromStr>")]
     /// 用于私信场景下识别真实的来源频道id
     pub src_guild_id: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct MessageSend<'a> {
+    pub message_reference: Option<MessageReference>,
+    pub content: Option<&'a str>,
+    pub embed: Option<MessageEmbed>,
+    pub ark: Option<MessageArk>,
+    pub image: Option<&'a str>,
+    pub markdown: Option<MessageMarkdown>,
+    pub msg_id: Option<MessageId>,
+    pub event_id: Option<&'a str>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -95,18 +135,31 @@ pub struct MessageAttachment {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct MessageReference {
     #[serde_as(as = "DisplayFromStr")]
     /// 需要引用回复的消息 id
-    message_id: u64,
+    pub message_id: u64,
     /// 是否忽略获取引用消息详情错误，默认否
     ignore_get_message_error: bool,
 }
 
+impl MessageReference {
+    pub fn new(message_id: u64) -> Self {
+        Self {
+            message_id,
+            ignore_get_message_error: false,
+        }
+    }
+    pub fn ignore_get_message_error(&mut self, ignore_get_message_error: bool) -> &mut Self {
+        self.ignore_get_message_error = ignore_get_message_error;
+        self
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MessageArk {
-    ///	ark模板id（需要先申请）
+    /// ark模板id（需要先申请）
     pub template_id: i32,
     /// kv值列表
     pub kv: Vec<MessageArkKv>,
@@ -137,7 +190,7 @@ pub struct MessageArkObjKv {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MessageDelete {
     /// 被删除的消息内容
-    message: Message,
+    message: MessageRecieved,
     /// 执行删除操作的用户
     op_user: User,
 }

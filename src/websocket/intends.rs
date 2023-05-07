@@ -1,6 +1,9 @@
+#[repr(transparent)]
+pub struct Intends(pub u32);
+
+
 macro_rules! def_intends {
     ($($ident:ident, $offset:expr)*) => {
-        pub struct Intends;
         impl Intends {
             $(
                 pub const $ident: u32 = (1 << $offset);

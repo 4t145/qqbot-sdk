@@ -10,7 +10,7 @@ pub struct GatewayResponse {
 impl Api for Gateway {
     type Request = ();
 
-    type Response = Response<GatewayResponse>;
+    type Response = GatewayResponse;
 
     const METHOD: Method = Method::GET;
 

@@ -1,0 +1,21 @@
+[
+  {
+    "author": {
+      "avatar": "",
+      "bot": true,
+      "id": "4930066099913308311",
+      "username": ""
+    },
+    "channel_id": "12239797",
+    "content": "<@!4930066099913308311> 你好",
+    "flags": 0,
+    "guild_id": "17480253631046435465",
+    "id": "08898585b282c295cbf20110b587eb05382b48c0fbd9a206",
+    "mention_everyone": false,
+    "pinned": false,
+    "seq_in_channel": "43",
+    "timestamp": "2023-05-07T00:18:08+08:00",
+    "tts": false,
+    "type": 0
+  }
+]
