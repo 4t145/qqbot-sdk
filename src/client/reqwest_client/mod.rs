@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use crate::api::{Authority, Api, Response};
-use reqwest::{Url, ClientBuilder};
+use crate::api::{Api, Authority, Response};
+use reqwest::{ClientBuilder, Url};
 
 mod message;
 
 #[derive(Clone, Debug)]
 pub struct ApiClient {
     client: reqwest::Client,
-    auth_header: String
+    auth_header: String,
 }
 
 impl ApiClient {
@@ -44,19 +44,27 @@ impl ApiClient {
     }
 
     /// 发送一个请求
-    /// 
+    ///
     /// 例子
     /// ```
     /// let resp = client.send::<Getway>::(&()).await?
     /// ```
-    pub async fn send<A:Api>(&self, request: &A::Request) -> Result<Response<A::Response>, reqwest::Error> {
+    pub async fn send<A: Api>(
+        &self,
+        request: &A::Request,
+    ) -> Result<Response<A::Response>, reqwest::Error> {
         let url = Url::parse(format!("{}{}", env!("DOMAIN"), A::path(request)).as_str()).unwrap();
-        log::debug!("send request: {json} to {url}", json=serde_json::to_string_pretty(request).unwrap());
-        let resp = self.client
+        log::debug!(
+            "send request: {json} to {url}",
+            json = serde_json::to_string_pretty(request).unwrap()
+        );
+        let resp = self
+            .client
             .request(A::METHOD, url)
             .header(http::header::AUTHORIZATION, self.auth_header.as_str())
             .json(request)
-            .send().await?;
+            .send()
+            .await?;
         resp.json::<Response<A::Response>>().await
     }
 }

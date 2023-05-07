@@ -5,11 +5,11 @@ use http::{
     Method, Request,
 };
 use serde::{Deserialize, Serialize};
+pub mod guild;
 pub mod message;
 pub mod reaction;
 pub mod user;
 pub mod websocket;
-pub mod guild;
 
 #[derive(Clone, Debug)]
 /// 授权

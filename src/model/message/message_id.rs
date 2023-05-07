@@ -1,10 +1,10 @@
-use std::{str::FromStr, num::ParseIntError, fmt::Display};
+use std::{fmt::Display, str::FromStr};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// message id, 三个u64组成，大端序
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MessageId([u64;3]);
+pub struct MessageId([u64; 3]);
 
 impl Display for MessageId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -21,7 +21,8 @@ impl FromStr for MessageId {
         }
         let mut buf = [0u64; 3];
         for i in 0..3 {
-            buf[2-i] = u64::from_str_radix(&s[i*16..(i+1)*16], 16).map_err(|_|"message id should be 48 digit hex code")?;
+            buf[2 - i] = u64::from_str_radix(&s[i * 16..(i + 1) * 16], 16)
+                .map_err(|_| "message id should be 48 digit hex code")?;
         }
         Ok(MessageId(buf))
     }
@@ -30,18 +31,18 @@ impl FromStr for MessageId {
 impl Serialize for MessageId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         serializer.serialize_str(&self.to_string())
     }
 }
 
-impl <'de> Deserialize<'de> for MessageId {
+impl<'de> Deserialize<'de> for MessageId {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de> {
+        D: serde::Deserializer<'de>,
+    {
         let s = String::deserialize(deserializer)?;
-        MessageId::from_str(&s).map_err(|_|serde::de::Error::custom("invalid message id"))
+        MessageId::from_str(&s).map_err(|_| serde::de::Error::custom("invalid message id"))
     }
 }
-
-

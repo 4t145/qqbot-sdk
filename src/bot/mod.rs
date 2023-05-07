@@ -1,7 +1,7 @@
 mod channel;
+mod dispacher;
 mod message;
 mod user;
-mod dispacher;
 
 pub use channel::*;
 pub use message::*;
@@ -12,10 +12,7 @@ use crate::{
     api::{
         guild::{GetGuild, GetGuildRequest},
         message::{PostMessage, PostMessageRequest},
-        reaction::{
-            DeleteEmojiReaction, EmojiReactionDescriptor, GetEmojiReactionUserList,
-            SendEmojiReaction,
-        },
+        reaction::{DeleteEmojiReaction, EmojiReactionDescriptor, SendEmojiReaction},
         user::GetMe,
         websocket::Gateway,
         Authority,
@@ -24,10 +21,10 @@ use crate::{
         reqwest_client::ApiClient,
         tungstenite_client::{ConnectOption, ConnectType, WsClient},
     },
-    model::{Emoji, Guild, MessageId, MessageRecieved, MessageSend, User},
-    websocket::{Event, Identify, Intends},
+    model::{Guild, MessageSend, User},
+    websocket::{Event, Identify},
 };
-use std::{collections::HashMap, error::Error, fmt::Display, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 // use self::dispacher::{EventDispatcher};
 
@@ -169,7 +166,6 @@ impl Bot {
     //     });
     // }
 }
-
 
 impl Bot {
     pub fn cache(&self) -> BotCache {

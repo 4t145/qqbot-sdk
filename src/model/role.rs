@@ -19,9 +19,7 @@ pub struct Role {
 }
 
 /// 默认的身份组id
-pub struct DefaultRoleId {
-    
-}
+pub struct DefaultRoleId {}
 
 macro_rules! def {
     ($($ident:ident, $value:expr, #[$doc:meta])*) => {

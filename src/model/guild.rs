@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use time::{
     serde::iso8601::{deserialize as isodeser, serialize as isoser},
@@ -24,7 +24,11 @@ pub struct Guild {
     pub max_members: i32,
     ///描述
     pub description: String,
-    #[serde(serialize_with = "isoser", deserialize_with = "isodeser", default="crate::utils::unix_time_zero")]
+    #[serde(
+        serialize_with = "isoser",
+        deserialize_with = "isodeser",
+        default = "crate::utils::unix_time_zero"
+    )]
     ///加入时间
     pub joined_at: OffsetDateTime,
 }

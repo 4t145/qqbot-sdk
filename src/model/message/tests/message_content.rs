@@ -6,8 +6,13 @@ fn test_macro() {
         &mut ("hello world".parse::<MessageContent>().unwrap())
     );
     assert_eq!(
-        MessageContent::default().text("hello world").at(123456789).at_all(),
-        &mut ("hello world<@!123456789>@everyone".parse::<MessageContent>().unwrap())
+        MessageContent::default()
+            .text("hello world")
+            .at(123456789)
+            .at_all(),
+        &mut ("hello world<@!123456789>@everyone"
+            .parse::<MessageContent>()
+            .unwrap())
     );
     assert_eq!(
         MessageContent::default().text(">>>>>>").at(123456789).link_channel(88888).text("<<<<>>>>").at_all().text("<><>>>"),
@@ -55,6 +60,4 @@ fn test_macro() {
     //     },
     //     "&gt;&gt;&gt;&gt;(&amp;-**&amp;)&lt;&lt;<@!123456789>"
     // );
-
-
 }

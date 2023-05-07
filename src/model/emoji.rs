@@ -1,4 +1,4 @@
-use serde::{ser::SerializeStruct, Deserialize, Serialize, de::Visitor};
+use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Serialize};
 mod raw_emoji;
 mod system_emoji;
 
@@ -40,19 +40,21 @@ impl Serialize for Emoji {
 impl<'de> Deserialize<'de> for Emoji {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-    D: serde::Deserializer<'de> {
+        D: serde::Deserializer<'de>,
+    {
         struct EmojiVisitor;
-        
+
         impl<'de> Visitor<'de> for EmojiVisitor {
             type Value = Emoji;
-        
+
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("struct Emoji")
             }
-        
+
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-                where
-                    A: serde::de::MapAccess<'de>, {
+            where
+                A: serde::de::MapAccess<'de>,
+            {
                 let mut tp: Option<u32> = None;
                 let mut id: Option<String> = None;
                 while let Some(key) = map.next_key()? {
@@ -77,9 +79,17 @@ impl<'de> Deserialize<'de> for Emoji {
                 let tp = tp.ok_or_else(|| serde::de::Error::missing_field("type"))?;
                 let id = id.ok_or_else(|| serde::de::Error::missing_field("id"))?;
                 match tp {
-                    1 => Ok(Emoji::System(id.parse::<u32>().map_err(|e| serde::de::Error::custom(format!("cannot parse system emoji id <{id}>: {e}")))?)),
-                    2 => Ok(Emoji::Raw(id.parse::<u32>().map_err(|e| serde::de::Error::custom(format!("cannot parse raw emoji id <{id}>: {e}")))?)),
-                    _ => Err(serde::de::Error::custom(format!("unknown emoji type <{tp}>"))),
+                    1 => Ok(Emoji::System(id.parse::<u32>().map_err(|e| {
+                        serde::de::Error::custom(format!(
+                            "cannot parse system emoji id <{id}>: {e}"
+                        ))
+                    })?)),
+                    2 => Ok(Emoji::Raw(id.parse::<u32>().map_err(|e| {
+                        serde::de::Error::custom(format!("cannot parse raw emoji id <{id}>: {e}"))
+                    })?)),
+                    _ => Err(serde::de::Error::custom(format!(
+                        "unknown emoji type <{tp}>"
+                    ))),
                 }
             }
         }
@@ -101,7 +111,7 @@ pub mod tests {
             assert_eq!(emoji, &e);
         }
     }
-    
+
     #[test]
     fn serialize_test() {
         for (emoji, json) in TEST_CASE_PAIRS {

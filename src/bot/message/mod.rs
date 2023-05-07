@@ -1,4 +1,4 @@
-use crate::model::{MessageRecieved, MessageReference, MessageSend, User, MessageId};
+use crate::model::{MessageId, MessageRecieved, MessageReference, MessageSend};
 
 #[derive(Debug, Default)]
 pub struct MessageBuilder<'a> {
@@ -45,5 +45,3 @@ impl<'a> MessageBuilder<'a> {
         Ok(message)
     }
 }
-
-

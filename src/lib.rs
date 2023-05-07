@@ -1,6 +1,6 @@
 pub mod api;
-pub mod model;
-pub mod websocket;
-pub mod client;
 pub mod bot;
+pub mod client;
+pub mod model;
 pub(crate) mod utils;
+pub mod websocket;

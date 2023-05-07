@@ -1,6 +1,9 @@
-use crate::model::{MessageRecieved, MessageArk, MessageEmbed, MessageMarkdown, MessageReference, MessageDescriptor, MessageSend, MessageId};
+use crate::model::{
+    MessageArk, MessageDescriptor, MessageEmbed, MessageId, MessageMarkdown, MessageRecieved,
+    MessageReference, MessageSend,
+};
 
-use super::{Api};
+use super::Api;
 use serde::Serialize;
 
 pub struct GetMessage;
@@ -14,11 +17,11 @@ impl Api for GetMessage {
 
     fn path(request: &Self::Request) -> String {
         format!("/{}", request.into_sub_path())
-    }   
+    }
 }
 
 pub struct PostMessage<'a> {
-    marker: std::marker::PhantomData<&'a ()>
+    marker: std::marker::PhantomData<&'a ()>,
 }
 
 #[derive(Serialize, Default, Debug)]
@@ -84,7 +87,6 @@ impl<'a> Api for PostMessage<'a> {
 
 /// 撤回消息
 pub struct DeleteMessage;
-
 
 #[derive(Serialize)]
 pub struct DeleteMessageRequest {

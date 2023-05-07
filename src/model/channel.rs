@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
-use serde_repr::{Serialize_repr, Deserialize_repr};
+use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use serde_with::{serde_as, DisplayFromStr};
 
 #[serde_as]
@@ -28,7 +28,7 @@ pub struct Channel {
     pub private_type: PrivateType,
     /// 子频道发言权限 SpeakPermission
     pub speak_permission: SpeakPermission,
-    #[serde(skip_serializing_if ="Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     /// 用于标识应用子频道应用类型，仅应用子频道时会使用该字段，具体定义请参考 应用子频道的应用类型
     pub application_id: Option<String>,
     /// 用户拥有的子频道权限 Permissions
@@ -53,7 +53,7 @@ pub enum ChannelType {
     Forum = 10007,
     /// 尚未支持的
     #[serde(other)]
-    Unsupported = i32::MAX
+    Unsupported = i32::MAX,
 }
 
 #[derive(Serialize_repr, Deserialize_repr, Clone, Debug)]
@@ -70,7 +70,7 @@ pub enum ChannelSubType {
     TeamUp = 3,
     /// 尚未支持的
     #[serde(other)]
-    Unsupported = i32::MAX
+    Unsupported = i32::MAX,
 }
 
 #[derive(Serialize_repr, Deserialize_repr, Clone, Debug)]

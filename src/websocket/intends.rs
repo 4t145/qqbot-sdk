@@ -1,7 +1,6 @@
 #[repr(transparent)]
 pub struct Intends(pub u32);
 
-
 macro_rules! def_intends {
     ($($ident:ident, $offset:expr)*) => {
         impl Intends {
@@ -25,4 +24,3 @@ def_intends! {
     AUDIO_ACTION, 29
     PUBLIC_GUILD_MESSAGES, 30
 }
-

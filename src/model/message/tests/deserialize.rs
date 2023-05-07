@@ -7,4 +7,3 @@ fn message_recieved() {
     drop(val);
     // println!("{:#?}", val);
 }
-

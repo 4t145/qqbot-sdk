@@ -1,3 +1,1 @@
-pub struct Message {
-    
-}
+pub struct Message {}

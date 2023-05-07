@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 
 #[serde_as]
@@ -12,10 +12,10 @@ pub struct User {
     pub username: String,
     pub bot: Option<bool>,
     pub avatar: Option<String>,
-    #[serde(skip_serializing_if ="Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub union_openid: Option<String>,
-    #[serde(skip_serializing_if ="Option::is_none")]
-    pub union_user_account: Option<String>
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub union_user_account: Option<String>,
 }
 
 impl PartialEq for User {

@@ -1,10 +1,10 @@
 use super::*;
-use serde::{Deserialize};
 use http::Method;
+use serde::Deserialize;
 pub struct Gateway;
 #[derive(Deserialize, Debug, Clone)]
 pub struct GatewayResponse {
-    pub url: String
+    pub url: String,
 }
 
 impl Api for Gateway {

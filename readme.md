@@ -9,41 +9,43 @@ async fn main() {
 }
 
 async fn async_main() -> Result<(), Error> {
+    std::env::set_var("RUST_LOG", "debug,qqbot_sdk=DEBUG");
+    env_logger::builder().is_test(true).try_init().unwrap();
+    log::info!("Hello, world!");
     // 启动webapi client
-    let auth = Authorization::Bot { app_id: "000011112222", token: "AAAABBBBCCCCDDDDEEEEFFFF" };
-    let token = auth.token();
-    let webapi_client = ApiClient::new(auth);
-    let url = webapi_client
-        .send::<Gateway>(&()).await?
-        .as_result().unwrap().url;
-
-    // 启动websocket client
-    let identify = Identify {
-        token: token,
-        intents: Intends::PUBLIC_GUILD_MESSAGES | Intends::GUILD_MESSAGE_REACTIONS,
-        shard: None,
-        properties: std::collections::HashMap::new(),
+    let auth = Authority::Bot {
+        app_id: &std::env::var("APP_ID").unwrap(),
+        token: &std::env::var("TOKEN").unwrap(),
     };
-
-    // ws连接设置
-    let connect_option = ConnectOption {
-        wss_gateway: url,
-        connect_type: ConnectType::New(identify),
-    };
-
-    // ws连接
-    let ws_connect = connect_option.connect_tokio().await.unwrap();
-
-    // ws启动客户端
-    let ws_client = ws_connect.luanch_client().await;
-
-    // 事件
-    let mut evt_rx = ws_client.subscribe_event();
-
-    while let Ok((evt, seq)) = evt_rx.recv().await {
-        println!("收到事件[{seq:?}]{evt:?}");
+    let bot = BotBuilder::default()
+        .auth(auth)
+        .intents(Intends::PUBLIC_GUILD_MESSAGES | Intends::GUILD_MESSAGE_REACTIONS)
+        .build()
+        .await
+        .unwrap();
+    let me = bot.about_me().await?;
+    log::info!("bot: {:?}", me);
+    bot.fetch_my_guilds().await?;
+    log::info!("guilds count: {:?}", bot.cache().get_guilds_count().await);
+    // echo
+    while let Ok((e, _seq)) = bot.subscribe().recv().await {
+        match e {
+            qqbot_sdk::websocket::Event::AtMessageCreate(m) => {
+                let channel_id = m.channel_id;
+                bot.post_message(
+                    &Channel { channel_id },
+                    &MessageBuilder::default()
+                        .content(m.content.as_str())
+                        .reply_to(m.as_ref())
+                        .build()
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            }
+            other => log::info!("event: {:?}", other),
+        }
     }
-
-    return Ok(())
+    Ok(())
 }
 ```

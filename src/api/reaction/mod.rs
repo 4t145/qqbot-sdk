@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::model::{Emoji, User, MessageId};
+use crate::model::{Emoji, MessageId, User};
 
 use super::{Api, Response};
 
@@ -13,7 +13,6 @@ pub struct DeleteEmojiReaction;
 /// 获取表情表态用户列表
 pub struct GetEmojiReactionUserList;
 
-
 ///  发表表情表态
 #[derive(Debug, Serialize)]
 pub struct EmojiReactionDescriptor {
@@ -25,7 +24,6 @@ pub struct EmojiReactionDescriptor {
     pub emoji: Emoji,
 }
 
-
 impl Api for SendEmojiReaction {
     type Request = EmojiReactionDescriptor;
 
@@ -34,7 +32,12 @@ impl Api for SendEmojiReaction {
     const METHOD: http::Method = http::Method::PUT;
 
     fn path(request: &Self::Request) -> String {
-        format!("/channels/{}/messages/{}/reactions/{}", request.channel_id, request.message_id, request.emoji.into_sub_path())
+        format!(
+            "/channels/{}/messages/{}/reactions/{}",
+            request.channel_id,
+            request.message_id,
+            request.emoji.into_sub_path()
+        )
     }
 }
 
@@ -61,7 +64,6 @@ pub struct GetEmojiReactionUserListResponse {
     pub is_end: bool,
 }
 
-
 impl Api for DeleteEmojiReaction {
     type Request = EmojiReactionDescriptor;
 
@@ -70,10 +72,14 @@ impl Api for DeleteEmojiReaction {
     const METHOD: http::Method = http::Method::DELETE;
 
     fn path(request: &Self::Request) -> String {
-        format!("/channels/{}/messages/{}/reactions/{}", request.channel_id, request.message_id, request.emoji.into_sub_path())
+        format!(
+            "/channels/{}/messages/{}/reactions/{}",
+            request.channel_id,
+            request.message_id,
+            request.emoji.into_sub_path()
+        )
     }
 }
-
 
 impl Api for GetEmojiReactionUserList {
     type Request = GetEmojiReactionUserListRequest;
@@ -83,6 +89,11 @@ impl Api for GetEmojiReactionUserList {
     const METHOD: http::Method = http::Method::GET;
 
     fn path(request: &Self::Request) -> String {
-        format!("/channels/{}/messages/{}/reactions/{}", request.descriptor.channel_id, request.descriptor.message_id, request.descriptor.emoji.into_sub_path())
+        format!(
+            "/channels/{}/messages/{}/reactions/{}",
+            request.descriptor.channel_id,
+            request.descriptor.message_id,
+            request.descriptor.emoji.into_sub_path()
+        )
     }
 }

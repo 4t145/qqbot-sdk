@@ -144,9 +144,7 @@ impl ConnectOption {
                 token = identify.token.clone();
                 let message = WsMessage::from(UploadPayload::Identify(identify)).0;
                 log::debug!("Sending identify: {:?}", &message);
-                ws.send(message)
-                    .await
-                    .map_err(Ws)?;
+                ws.send(message).await.map_err(Ws)?;
             }
             ConnectType::Reconnect(resume) => {
                 token = resume.token.clone();

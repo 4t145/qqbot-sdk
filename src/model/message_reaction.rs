@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
-use serde_repr::{Serialize_repr, Deserialize_repr};
+use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use super::emoji::Emoji;
 
@@ -9,7 +9,7 @@ pub struct MessageReaction {
     pub guild_id: String,
     pub channel_id: String,
     pub target: String,
-    pub emoji: Emoji
+    pub emoji: Emoji,
 }
 
 #[derive(Debug, Serialize_repr, Deserialize_repr)]
@@ -23,11 +23,11 @@ pub enum ReactionTargetType {
     /// 评论
     Comment = 2,
     /// 回复
-    Reply = 3
+    Reply = 3,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ReactionTarget {
     pub id: String,
-    pub r#type: ReactionTargetType
+    pub r#type: ReactionTargetType,
 }

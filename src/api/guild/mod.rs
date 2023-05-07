@@ -4,7 +4,6 @@ use super::Api;
 
 pub struct GetGuild;
 
-
 #[derive(Debug, Serialize)]
 pub struct GetGuildRequest {
     #[serde(skip)]

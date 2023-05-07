@@ -6,7 +6,6 @@ use super::Api;
 
 pub struct GetMe;
 
-
 impl Api for GetMe {
     type Request = ();
 
@@ -16,7 +15,6 @@ impl Api for GetMe {
 
     const PATH: &'static str = "/users/@me";
 }
-
 
 pub struct GetMyGuilds;
 

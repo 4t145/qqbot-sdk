@@ -1,11 +1,8 @@
 use qqbot_sdk::{
-    api::{websocket::Gateway, Authority},
-    bot::{Bot, BotBuilder, Channel, MessageBuilder, BotError},
-    client::{reqwest_client::*, tungstenite_client::*},
-    websocket::{Identify, Intends},
+    api::Authority,
+    bot::{BotBuilder, BotError, Channel, MessageBuilder},
+    websocket::Intends,
 };
-
-use reqwest::Error;
 
 #[tokio::main]
 async fn main() {
@@ -31,7 +28,7 @@ async fn async_main() -> Result<(), BotError> {
     log::info!("bot: {:?}", me);
     bot.fetch_my_guilds().await?;
     log::info!("guilds count: {:?}", bot.cache().get_guilds_count().await);
-    while let Ok((e, seq)) = bot.subscribe().recv().await {
+    while let Ok((e, _seq)) = bot.subscribe().recv().await {
         match e {
             qqbot_sdk::websocket::Event::AtMessageCreate(m) => {
                 let channel_id = m.channel_id;
@@ -45,7 +42,7 @@ async fn async_main() -> Result<(), BotError> {
                 )
                 .await
                 .unwrap();
-            },
+            }
             other => log::info!("event: {:?}", other),
         }
     }
