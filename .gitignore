@@ -2,4 +2,4 @@
 /Cargo.lock
 .*-prod.env
 qqbot.toml
-.cargo
+/.cargo

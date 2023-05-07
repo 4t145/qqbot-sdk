@@ -1,6 +1,7 @@
 mod channel;
 mod message;
 mod user;
+mod dispacher;
 
 pub use channel::*;
 pub use message::*;
@@ -28,11 +29,14 @@ use crate::{
 };
 use std::{collections::HashMap, error::Error, fmt::Display, sync::Arc};
 
+// use self::dispacher::{EventDispatcher};
+
 #[derive(Debug, Clone)]
 pub struct Bot {
     api_client: Arc<ApiClient>,
     cache: BotCache,
     ws_client: Arc<WsClient>,
+    // dispacher: Arc<RwLock<EventDispatcher>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -137,6 +141,7 @@ impl<'a> BotBuilder<'a> {
             api_client: Arc::new(api_client),
             ws_client: Arc::new(ws_client),
             cache: BotCache::default(),
+            // dispacher: Arc::new(RwLock::new(EventDispatcher::default())),
         })
     }
 }
@@ -147,10 +152,26 @@ pub enum BotError {
     BadRequest(crate::api::ResponseFail),
 }
 
+/// Handle Events
 impl Bot {
     pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<(Event, u32)> {
         self.ws_client.subscribe_event()
     }
+    // pub fn start_dispatch(&self) {
+    //     let dispacher = self.dispacher.clone();
+    //     let bot = self.clone();
+    //     let mut rx = self.subscribe();
+    //     tokio::spawn(async move {
+    //         while let Ok((event, seq)) = rx.recv().await {
+    //             let dispacher = dispacher.read().await;
+    //             dispacher.dispatch(&event, seq, &bot);
+    //         }
+    //     });
+    // }
+}
+
+
+impl Bot {
     pub fn cache(&self) -> BotCache {
         self.cache.clone()
     }
