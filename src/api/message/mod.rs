@@ -1,5 +1,5 @@
 use crate::model::{
-    MessageArk, MessageDescriptor, MessageEmbed, MessageId, MessageMarkdown, MessageRecieved,
+    MessageArk, MessageDescriptor, MessageEmbed, MessageId, MessageMarkdown, MessageBotRecieved,
     MessageReference, MessageSend,
 };
 
@@ -11,7 +11,7 @@ pub struct GetMessage;
 impl Api for GetMessage {
     type Request = MessageDescriptor;
 
-    type Response = MessageRecieved;
+    type Response = MessageBotRecieved;
 
     const METHOD: http::Method = http::Method::GET;
 
@@ -73,7 +73,7 @@ impl<'a> PostMessageRequest<'a> {
 impl<'a> Api for PostMessage<'a> {
     type Request = PostMessageRequest<'a>;
 
-    type Response = MessageRecieved;
+    type Response = MessageBotRecieved;
 
     const METHOD: http::Method = http::Method::POST;
 

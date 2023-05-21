@@ -1,6 +1,6 @@
 use qqbot_sdk::{
     api::Authority,
-    bot::{BotBuilder, BotError, Channel, MessageBuilder},
+    bot::{BotBuilder, BotError, ChannelFilter, MessageBuilder},
     websocket::Intends,
 };
 
@@ -33,7 +33,7 @@ async fn async_main() -> Result<(), BotError> {
             qqbot_sdk::websocket::Event::AtMessageCreate(m) => {
                 let channel_id = m.channel_id;
                 bot.post_message(
-                    &Channel { channel_id },
+                    &ChannelFilter { channel_id },
                     &MessageBuilder::default()
                         .content(m.content.as_str())
                         .reply_to(m.as_ref())

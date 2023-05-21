@@ -10,6 +10,8 @@ use tokio_tungstenite::{connect_async, WebSocketStream};
 
 use crate::websocket::{DownloadPayload, Event, Identify, Ready, Resume, UploadPayload};
 
+
+pub type SeqEvent = (Event, u32);
 #[repr(transparent)]
 struct WsMessage(tungstenite::Message);
 
@@ -208,7 +210,7 @@ impl ConnectionTokio {
 
         // 事件广播，broadcast
         let (event_broadcast_sender, _event_broadcast_reciever) =
-            tokio::sync::broadcast::channel::<(Event, u32)>(64);
+            tokio::sync::broadcast::channel::<SeqEvent>(64);
 
         let event = event_broadcast_sender.clone();
 
@@ -303,7 +305,7 @@ pub struct WsClient {
     upload_bus_task: JoinHandle<()>,
     download_bus_task: JoinHandle<()>,
     heartbeat_task: JoinHandle<()>,
-    event: tokio::sync::broadcast::Sender<(Event, u32)>,
+    event: tokio::sync::broadcast::Sender<SeqEvent>,
     latest_seq: Arc<AtomicU32>,
     hb_ack_missed: Arc<AtomicU8>,
 
@@ -329,7 +331,7 @@ impl WsClient {
 
     #[inline]
     /// 获取事件订阅
-    pub fn subscribe_event(&self) -> tokio::sync::broadcast::Receiver<(Event, u32)> {
+    pub fn subscribe_event(&self) -> tokio::sync::broadcast::Receiver<SeqEvent> {
         self.event.subscribe()
     }
 

@@ -1,4 +1,4 @@
-use crate::model::{MessageId, MessageRecieved, MessageReference, MessageSend};
+use crate::model::{MessageId, MessageBotRecieved, MessageReference, MessageSend};
 
 #[derive(Debug, Default)]
 pub struct MessageBuilder<'a> {
@@ -21,7 +21,7 @@ impl<'a> MessageBuilder<'a> {
         self.content = Some(content.into());
         self
     }
-    pub fn reply_to(mut self, message: &'a MessageRecieved) -> Self {
+    pub fn reply_to(mut self, message: &'a MessageBotRecieved) -> Self {
         self.reply_to = Some(message.id);
         self
     }

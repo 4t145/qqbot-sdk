@@ -4,12 +4,15 @@ use time::{
     serde::iso8601::{deserialize as isodeser, serialize as isoser},
     OffsetDateTime,
 };
+
+pub type GuildId = u64;
+
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Guild {
     #[serde_as(as = "DisplayFromStr")]
     ///频道ID
-    pub id: u64,
+    pub id: GuildId,
     ///频道名称
     pub name: String,
     ///频道头像地址

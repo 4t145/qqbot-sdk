@@ -16,7 +16,7 @@ pub struct InlineKeyboardRow {
 pub struct Button {
     /// 按钮 id
     pub id: String,
-    /// 按纽渲染展示对象 	用于设定按钮的显示效果
+    /// 按纽渲染展示对象 用于设定按钮的显示效果
     pub render_data: RenderData,
     /// 该按纽操作相关字段 	用于设定按钮点击后的操作
     pub action: Action,

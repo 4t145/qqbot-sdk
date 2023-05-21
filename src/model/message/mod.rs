@@ -33,15 +33,15 @@ impl MessageDescriptor {
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct MessageRecieved {
+pub struct MessageBotRecieved {
     /// 消息 id， 这里是64*3 = 192为十六进制数字
     pub id: MessageId,
     #[serde_as(as = "DisplayFromStr")]
     /// 子频道 id
-    pub channel_id: u64,
+    pub channel_id: ChannelId,
     #[serde_as(as = "DisplayFromStr")]
     /// 频道 id
-    pub guild_id: u64,
+    pub guild_id: GuildId,
     /// 消息内容
     pub content: String,
     #[serde(
@@ -92,6 +92,77 @@ pub struct MessageRecieved {
     pub src_guild_id: Option<u64>,
 }
 
+#[serde_as]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MessageGuildRecieved {
+    guild_id: GuildId,
+    #[serde(flatten)]
+    inner: MessageChannelRecieved,
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MessageChannelRecieved {
+    channel_id: ChannelId,
+    #[serde(flatten)]
+    inner: MessageRecieved
+}
+
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MessageRecieved {
+    /// 消息 id， 这里是64*3 = 192为十六进制数字
+    pub id: MessageId,
+    /// 消息内容
+    pub content: String,
+    #[serde(
+        serialize_with = "isoser",
+        deserialize_with = "isodeser",
+        default = "crate::utils::unix_time_zero"
+    )]
+    /// 消息创建时间
+    pub timestamp: OffsetDateTime,
+    #[serde(
+        serialize_with = "isoser",
+        deserialize_with = "isodeser",
+        default = "crate::utils::unix_time_zero"
+    )]
+    /// 消息编辑时间
+    pub edited_timestamp: OffsetDateTime,
+    #[serde(default)]
+    /// 是否是@全员消息
+    pub mention_everyone: bool,
+    /// 消息创建者
+    pub author: User,
+    #[serde(default)]
+    /// 附件
+    pub attachments: Vec<MessageAttachment>,
+    #[serde(default)]
+    /// embed
+    pub embeds: Vec<MessageEmbed>,
+    #[serde(default)]
+    /// 消息中@的人
+    pub mentions: Vec<User>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// 消息创建者的member信息
+    pub member: Option<Member>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// ark消息
+    pub ark: Option<MessageArk>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// 用于消息间的排序，seq 在同一子频道中按从先到后的顺序递增，不同的子频道之间消息无法排序。(目前只在消息事件中有值，2022年8月1日 后续废弃)
+    pub seq: Option<u32>,
+    #[serde_as(as = "DisplayFromStr")]
+    /// 子频道消息 seq，用于消息间的排序，seq 在同一子频道中按从先到后的顺序递增，不同的子频道之间消息无法排序
+    pub seq_in_channel: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// 引用消息对象
+    pub message_reference: Option<MessageReference>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    /// 用于私信场景下识别真实的来源频道id
+    pub src_guild_id: Option<u64>,
+}
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct MessageSend<'a> {
     pub message_reference: Option<MessageReference>,
@@ -190,7 +261,7 @@ pub struct MessageArkObjKv {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MessageDelete {
     /// 被删除的消息内容
-    message: MessageRecieved,
+    message: MessageBotRecieved,
     /// 执行删除操作的用户
     op_user: User,
 }

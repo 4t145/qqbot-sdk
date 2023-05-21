@@ -1,39 +1,48 @@
-mod channel;
+
 mod dispacher;
 mod message;
 mod user;
+mod filter;
 
-pub use channel::*;
 pub use message::*;
-use tokio::sync::RwLock;
+use tokio::{sync::RwLock, task::JoinHandle};
 pub use user::*;
 
 use crate::{
     api::{
         guild::{GetGuild, GetGuildRequest},
         message::{PostMessage, PostMessageRequest},
-        reaction::{DeleteEmojiReaction, EmojiReactionDescriptor, SendEmojiReaction},
+        reaction::{
+            DeleteEmojiReaction, EmojiReactionDescriptor, GetEmojiReactionUserList,
+            GetEmojiReactionUserListRequest, SendEmojiReaction,
+        },
         user::GetMe,
         websocket::Gateway,
         Authority,
     },
     client::{
         reqwest_client::ApiClient,
-        tungstenite_client::{ConnectOption, ConnectType, WsClient},
+        tungstenite_client::{ConnectOption, ConnectType, WsClient, SeqEvent},
     },
-    model::{Guild, MessageSend, User},
+    model::{Guild, MessageSend, User, GuildId},
     websocket::{Event, Identify},
 };
 use std::{collections::HashMap, sync::Arc};
 
+use self::filter::{channel::ChannelFilter, FilterContext};
+
 // use self::dispacher::{EventDispatcher};
 
+/// # Bot
+/// ## Clone
+/// 可以随意克隆bot，内部全部有arc包裹, 且不提供可变性
 #[derive(Debug, Clone)]
 pub struct Bot {
     api_client: Arc<ApiClient>,
-    cache: BotCache,
     ws_client: Arc<WsClient>,
+    cache: BotCache,
     // dispacher: Arc<RwLock<EventDispatcher>>,
+    filters: Arc<RwLock<HashMap<GuildId, JoinHandle<()>>>>
 }
 
 #[derive(Debug, Clone, Default)]
@@ -138,6 +147,7 @@ impl<'a> BotBuilder<'a> {
             api_client: Arc::new(api_client),
             ws_client: Arc::new(ws_client),
             cache: BotCache::default(),
+            filters: Arc::new(RwLock::new(HashMap::new()))
             // dispacher: Arc::new(RwLock::new(EventDispatcher::default())),
         })
     }
@@ -167,16 +177,48 @@ impl Bot {
     // }
 }
 
+impl FilterContext for Bot {
+    type Message = Arc<SeqEvent>;
+    type Key = GuildId;
+
+    fn add<F>(&self, key: Self::Key, filter: F)
+    where
+        F: filter::Filter<Context = Self>  + Sync + Send + 'static {
+        let mut rx = self.ws_client.subscribe_event();
+        let task = async move {
+            while let Ok(seq_evt) = rx.recv().await {
+                let arced = Arc::new(seq_evt);
+                filter.handle(arced);
+            }
+        };
+        let handle = tokio::spawn(task);
+        let filters = self.filters.clone();
+        let register = async move {
+            filters.write().await.insert(key, handle);
+        };
+        tokio::spawn(register);
+    }
+
+    fn remove(&self, key: &Self::Key) {
+        let filters = self.filters.clone();
+        let key = key.to_owned();
+        let unregister = async move {
+            filters.write().await.remove(&key);
+        };
+        tokio::spawn(unregister);
+    }
+
+}
 impl Bot {
     pub fn cache(&self) -> BotCache {
         self.cache.clone()
     }
     pub async fn post_message(
         &self,
-        channel: &Channel,
+        channel_id: u64,
         message: &MessageSend<'_>,
-    ) -> Result<crate::model::MessageRecieved, BotError> {
-        let request = PostMessageRequest::new(channel.channel_id, message);
+    ) -> Result<crate::model::MessageBotRecieved, BotError> {
+        let request = PostMessageRequest::new(channel_id, message);
         self.api_client
             .send::<PostMessage>(&request)
             .await
@@ -249,12 +291,30 @@ impl Bot {
         Ok(())
     }
 
-    // pub async fn get_reaction_users(&self, reaction: &EmojiReactionDescriptor) -> Result<Vec<User>, BotError> {
-    //     self.api_client
-    //         .send::<GetEmojiReactionUserList>(reaction)
-    //         .await
-    //         .map_err(BotError::ApiError)?
-    //         .as_result()
-    //         .map_err(BotError::BadRequest)
-    // }
+    pub async fn get_reaction_users(
+        &self,
+        reaction: &EmojiReactionDescriptor,
+    ) -> Result<Vec<User>, BotError> {
+        let mut req: GetEmojiReactionUserListRequest =
+            GetEmojiReactionUserListRequest::new(reaction);
+        let mut collector = vec![];
+        loop {
+            let resp = self
+                .api_client
+                .send::<GetEmojiReactionUserList>(&req)
+                .await
+                .map_err(BotError::ApiError)?
+                .as_result()
+                .map_err(BotError::BadRequest)?;
+
+            collector.extend(resp.users);
+            if let Some(cookie) = resp.cookie {
+                req.next(cookie);
+            }
+            if resp.is_end {
+                collector.dedup();
+                break Ok(collector);
+            }
+        }
+    }
 }

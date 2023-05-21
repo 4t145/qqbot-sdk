@@ -5,6 +5,11 @@ mod system_emoji;
 pub use raw_emoji::*;
 pub use system_emoji::*;
 
+use crate::api::reaction::EmojiReactionDescriptor;
+
+use super::MessageBotRecieved;
+
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 #[repr(u32)]
 pub enum Emoji {
@@ -17,6 +22,14 @@ impl Emoji {
         match self {
             Emoji::System(id) => format!("1/{}", id),
             Emoji::Raw(id) => format!("2/{}", id),
+        }
+    }
+
+    pub fn react_to(self, message: &MessageBotRecieved) -> EmojiReactionDescriptor {
+        EmojiReactionDescriptor {
+            channel_id: message.channel_id,
+            message_id: message.id,
+            emoji: self
         }
     }
 }

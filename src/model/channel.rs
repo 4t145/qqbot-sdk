@@ -2,15 +2,18 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use serde_with::{serde_as, DisplayFromStr};
 
+use super::GuildId;
+pub type ChannelId = u64;
+
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Channel {
     #[serde_as(as = "DisplayFromStr")]
     /// 子频道 id
-    pub id: u64,
+    pub id: ChannelId,
     #[serde_as(as = "DisplayFromStr")]
     /// 频道 id
-    pub guild_id: u64,
+    pub guild_id: GuildId,
     /// 子频道名
     pub name: String,
     /// 子频道类型 ChannelType

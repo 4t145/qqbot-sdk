@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Emoji, MessageId, User};
@@ -11,7 +13,9 @@ pub struct SendEmojiReaction;
 pub struct DeleteEmojiReaction;
 
 /// 获取表情表态用户列表
-pub struct GetEmojiReactionUserList;
+pub struct GetEmojiReactionUserList<'a> {
+    marker: PhantomData<&'a ()>
+}
 
 ///  发表表情表态
 #[derive(Debug, Serialize)]
@@ -43,16 +47,31 @@ impl Api for SendEmojiReaction {
 
 /// 获取表情表态用户列表 请求
 #[derive(Debug, Serialize)]
-pub struct GetEmojiReactionUserListRequest {
+pub struct GetEmojiReactionUserListRequest<'a> {
     #[serde(skip)]
     /// Emoji描述符
-    pub descriptor: EmojiReactionDescriptor,
+    pub descriptor: &'a EmojiReactionDescriptor,
     /// 上次请求返回的cookie，第一次请求无需填写
     pub cookie: Option<String>,
     /// 每次拉取数量，默认20，最多50，只在第一次请求时设置
     pub limit: Option<u32>,
 }
 
+
+impl<'a> GetEmojiReactionUserListRequest<'a> {
+    pub fn new(descriptor: &'a EmojiReactionDescriptor) -> Self {
+        Self {
+            descriptor,
+            cookie: None,
+            limit: Some(20),
+        }
+    }
+    pub fn next(&mut self, cookie: String) -> &mut Self {
+        self.limit = None;
+        self.cookie = Some(cookie);
+        self
+    }
+}
 #[derive(Debug, Deserialize)]
 /// 获取表情表态用户列表 响应
 pub struct GetEmojiReactionUserListResponse {
@@ -81,10 +100,10 @@ impl Api for DeleteEmojiReaction {
     }
 }
 
-impl Api for GetEmojiReactionUserList {
-    type Request = GetEmojiReactionUserListRequest;
+impl<'a> Api for GetEmojiReactionUserList<'a> {
+    type Request = GetEmojiReactionUserListRequest<'a>;
 
-    type Response = Response<GetEmojiReactionUserListResponse>;
+    type Response = GetEmojiReactionUserListResponse;
 
     const METHOD: http::Method = http::Method::GET;
 
