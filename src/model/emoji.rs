@@ -9,7 +9,6 @@ use crate::api::reaction::EmojiReactionDescriptor;
 
 use super::MessageBotRecieved;
 
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 #[repr(u32)]
 pub enum Emoji {
@@ -29,7 +28,7 @@ impl Emoji {
         EmojiReactionDescriptor {
             channel_id: message.channel_id,
             message_id: message.id,
-            emoji: self
+            emoji: self,
         }
     }
 }

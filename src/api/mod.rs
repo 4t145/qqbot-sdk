@@ -5,6 +5,8 @@ use http::{
     Method, Request,
 };
 use serde::{Deserialize, Serialize};
+
+use crate::statics::*;
 pub mod guild;
 pub mod message;
 pub mod reaction;
@@ -63,7 +65,7 @@ pub trait Api {
 pub fn json_request<A: Api>(request: &A::Request, auth: &str) -> Request<Vec<u8>> {
     let body = serde_json::to_vec::<A::Request>(request).unwrap();
     Request::builder()
-        .uri(format!("{}{}", env!("DOMAIN"), A::path(request)))
+        .uri(format!("{}{}", domain(), A::path(request)))
         .header(AUTHORIZATION, auth)
         .header(CONTENT_TYPE, "application/json")
         .method(A::METHOD)

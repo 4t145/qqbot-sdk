@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{Emoji, MessageId, User};
 
-use super::{Api, Response};
+use super::Api;
 
 /// 发表表情表态
 pub struct SendEmojiReaction;
@@ -14,7 +14,7 @@ pub struct DeleteEmojiReaction;
 
 /// 获取表情表态用户列表
 pub struct GetEmojiReactionUserList<'a> {
-    marker: PhantomData<&'a ()>
+    marker: PhantomData<&'a ()>,
 }
 
 ///  发表表情表态
@@ -56,7 +56,6 @@ pub struct GetEmojiReactionUserListRequest<'a> {
     /// 每次拉取数量，默认20，最多50，只在第一次请求时设置
     pub limit: Option<u32>,
 }
-
 
 impl<'a> GetEmojiReactionUserListRequest<'a> {
     pub fn new(descriptor: &'a EmojiReactionDescriptor) -> Self {

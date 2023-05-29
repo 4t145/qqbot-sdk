@@ -1,4 +1,4 @@
-use crate::model::{MessageId, MessageBotRecieved, MessageReference, MessageSend};
+use crate::model::{MessageBotRecieved, MessageId, MessageReference, MessageSend};
 
 #[derive(Debug, Default)]
 pub struct MessageBuilder<'a> {

@@ -1,8 +1,7 @@
-
 mod dispacher;
+mod handler;
 mod message;
 mod user;
-mod filter;
 
 pub use message::*;
 use tokio::{sync::RwLock, task::JoinHandle};
@@ -22,14 +21,14 @@ use crate::{
     },
     client::{
         reqwest_client::ApiClient,
-        tungstenite_client::{ConnectOption, ConnectType, WsClient, SeqEvent},
+        tungstenite_client::{ConnectOption, ConnectType, WsClient},
     },
-    model::{Guild, MessageSend, User, GuildId},
+    model::{Guild, MessageSend, User},
     websocket::{Event, Identify},
 };
 use std::{collections::HashMap, sync::Arc};
 
-use self::filter::{channel::ChannelFilter, FilterContext};
+pub use self::handler::Handler;
 
 // use self::dispacher::{EventDispatcher};
 
@@ -41,14 +40,14 @@ pub struct Bot {
     api_client: Arc<ApiClient>,
     ws_client: Arc<WsClient>,
     cache: BotCache,
-    // dispacher: Arc<RwLock<EventDispatcher>>,
-    filters: Arc<RwLock<HashMap<GuildId, JoinHandle<()>>>>
+    handlers: Arc<RwLock<HashMap<String, JoinHandle<()>>>>, // dispacher: Arc<RwLock<EventDispatcher>>,
+                                                            // filters: Arc<RwLock<HashMap<GuildId, JoinHandle<()>>>>
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct BotCache {
     guilds: Arc<RwLock<HashMap<u64, Guild>>>,
-    users: Arc<RwLock<HashMap<u64, User>>>,
+    // users: Arc<RwLock<HashMap<u64, User>>>,
 }
 impl BotCache {
     pub async fn cache_guild(&self, guild: Guild) {
@@ -147,7 +146,7 @@ impl<'a> BotBuilder<'a> {
             api_client: Arc::new(api_client),
             ws_client: Arc::new(ws_client),
             cache: BotCache::default(),
-            filters: Arc::new(RwLock::new(HashMap::new()))
+            handlers: Arc::new(RwLock::new(HashMap::new())),
             // dispacher: Arc::new(RwLock::new(EventDispatcher::default())),
         })
     }
@@ -164,51 +163,34 @@ impl Bot {
     pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<(Event, u32)> {
         self.ws_client.subscribe_event()
     }
-    // pub fn start_dispatch(&self) {
-    //     let dispacher = self.dispacher.clone();
-    //     let bot = self.clone();
-    //     let mut rx = self.subscribe();
-    //     tokio::spawn(async move {
-    //         while let Ok((event, seq)) = rx.recv().await {
-    //             let dispacher = dispacher.read().await;
-    //             dispacher.dispatch(&event, seq, &bot);
-    //         }
-    //     });
-    // }
-}
-
-impl FilterContext for Bot {
-    type Message = Arc<SeqEvent>;
-    type Key = GuildId;
-
-    fn add<F>(&self, key: Self::Key, filter: F)
-    where
-        F: filter::Filter<Context = Self>  + Sync + Send + 'static {
-        let mut rx = self.ws_client.subscribe_event();
-        let task = async move {
+    pub async fn register_boxed_handler(&self, name: String, handler: Box<dyn Handler>) {
+        let mut rx = self.subscribe();
+        let ctx = Arc::new(self.clone());
+        let task = tokio::spawn(async move {
             while let Ok(seq_evt) = rx.recv().await {
-                let arced = Arc::new(seq_evt);
-                filter.handle(arced);
+                let result = handler.handle(seq_evt, ctx.clone());
+                drop(result);
             }
-        };
-        let handle = tokio::spawn(task);
-        let filters = self.filters.clone();
-        let register = async move {
-            filters.write().await.insert(key, handle);
-        };
-        tokio::spawn(register);
+        });
+        if let Some(jh) = self.handlers.write().await.insert(name, task) {
+            jh.abort();
+        }
     }
-
-    fn remove(&self, key: &Self::Key) {
-        let filters = self.filters.clone();
-        let key = key.to_owned();
-        let unregister = async move {
-            filters.write().await.remove(&key);
-        };
-        tokio::spawn(unregister);
+    pub async fn register_handler<H: Handler + 'static>(
+        &self,
+        name: impl Into<String>,
+        handler: H,
+    ) {
+        self.register_boxed_handler(name.into(), Box::new(handler))
+            .await;
     }
-
+    pub async fn unregister_handler(&self, name: &str) {
+        if let Some(jh) = self.handlers.write().await.remove(name) {
+            jh.abort();
+        }
+    }
 }
+
 impl Bot {
     pub fn cache(&self) -> BotCache {
         self.cache.clone()

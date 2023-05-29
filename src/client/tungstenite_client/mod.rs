@@ -10,7 +10,6 @@ use tokio_tungstenite::{connect_async, WebSocketStream};
 
 use crate::websocket::{DownloadPayload, Event, Identify, Ready, Resume, UploadPayload};
 
-
 pub type SeqEvent = (Event, u32);
 #[repr(transparent)]
 struct WsMessage(tungstenite::Message);

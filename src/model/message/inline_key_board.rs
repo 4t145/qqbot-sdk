@@ -18,7 +18,7 @@ pub struct Button {
     pub id: String,
     /// 按纽渲染展示对象 用于设定按钮的显示效果
     pub render_data: RenderData,
-    /// 该按纽操作相关字段 	用于设定按钮点击后的操作
+    /// 该按纽操作相关字段 用于设定按钮点击后的操作
     pub action: Action,
 }
 
@@ -43,7 +43,7 @@ pub enum RenderStyle {
 
 impl RenderStyle {
     const fn gray_line_box() -> Self {
-        return RenderStyle::GrayLineBox;
+        RenderStyle::GrayLineBox
     }
 }
 
@@ -96,7 +96,7 @@ impl From<PermissionSerde> for Permission {
             3 => Permission::CertainRole {
                 specify_role_ids: permission_serde.specify_role_ids.unwrap_or_default(),
             },
-            premission_type @ _ => panic!("cannot parse permission type: {premission_type}"),
+            premission_type => panic!("cannot parse permission type: {premission_type}"),
         }
     }
 }

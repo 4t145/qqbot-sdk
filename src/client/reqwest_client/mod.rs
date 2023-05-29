@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
-use crate::api::{Api, Authority, Response};
+use crate::{
+    api::{Api, Authority, Response},
+    statics::*,
+};
 use reqwest::{ClientBuilder, Url};
-
-mod message;
 
 #[derive(Clone, Debug)]
 pub struct ApiClient {
@@ -53,7 +54,7 @@ impl ApiClient {
         &self,
         request: &A::Request,
     ) -> Result<Response<A::Response>, reqwest::Error> {
-        let url = Url::parse(format!("{}{}", env!("DOMAIN"), A::path(request)).as_str()).unwrap();
+        let url = Url::parse(format!("{}{}", domain(), A::path(request)).as_str()).unwrap();
         log::debug!(
             "send request: {json} to {url}",
             json = serde_json::to_string_pretty(request).unwrap()

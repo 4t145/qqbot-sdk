@@ -105,9 +105,8 @@ pub struct MessageGuildRecieved {
 pub struct MessageChannelRecieved {
     channel_id: ChannelId,
     #[serde(flatten)]
-    inner: MessageRecieved
+    inner: MessageRecieved,
 }
-
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -242,7 +241,7 @@ pub struct MessageArkKv {
     key: String,
     /// value
     value: String,
-    /// arkobj类型的数组 	ark obj类型的列表
+    /// arkobj类型的数组 ark obj类型的列表
     obj: Vec<MessageArkObj>,
 }
 
