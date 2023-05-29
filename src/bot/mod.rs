@@ -19,10 +19,7 @@ use crate::{
         websocket::Gateway,
         Authority,
     },
-    client::{
-        reqwest_client::ApiClient,
-        tungstenite_client::{ConnectOption, ConnectType, WsClient},
-    },
+    client::{reqwest_client::ApiClient, tungstenite_client::WsClient, ConnectOption, ConnectType},
     model::{Guild, MessageSend, User},
     websocket::{Event, Identify},
 };
@@ -141,7 +138,7 @@ impl<'a> BotBuilder<'a> {
 
         // ws启动客户端
         let ws_client = ws_connect.luanch_client().await;
-
+        
         Ok(Bot {
             api_client: Arc::new(api_client),
             ws_client: Arc::new(ws_client),
@@ -299,4 +296,9 @@ impl Bot {
             }
         }
     }
+}
+
+use actix::prelude::*;
+impl Actor for Bot {
+    type Context = Context<Self>;
 }

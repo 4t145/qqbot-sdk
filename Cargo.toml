@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type=["cdylib", "staticlib", "rlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -44,6 +44,12 @@ version = "0.3.24"
 [dependencies.tokio]
 version = "1.21.2"
 features = ["rt", "macros", "rt-multi-thread", "signal"]
+
+[dependencies.actix]
+version = "0.13.0"
+
+[dependencies.awc]
+version = "3.1.1"
 
 [dependencies-dev.tokio]
 version = "1.21.2"

@@ -1,5 +1,6 @@
+use serde_with::Seq;
 use tokio::task::JoinHandle;
-use tungstenite::WebSocket;
+use tungstenite::{WebSocket, protocol::frame::coding::CloseCode};
 
 use futures_util::{SinkExt, StreamExt};
 use std::sync::{
@@ -8,9 +9,29 @@ use std::sync::{
 };
 use tokio_tungstenite::{connect_async, WebSocketStream};
 
-use crate::websocket::{DownloadPayload, Event, Identify, Ready, Resume, UploadPayload};
+use crate::{websocket::{DownloadPayload, Event, Identify, Ready, Resume, UploadPayload}, model::{MessageBotRecieved, MessageAudited, MessageReaction}, client::ConnectType};
 
 pub type SeqEvent = (Event, u32);
+
+#[derive(Debug, Clone)]
+pub enum ClientEvent {
+    AtMessageCreate(Arc<MessageBotRecieved>),
+    MessageAuditPass(Arc<MessageAudited>),
+    MessageAuditReject(Arc<MessageAudited>),
+    MessgaeReactionAdd(Arc<MessageReaction>),
+    MessgaeReactionRemove(Arc<MessageReaction>),
+}
+
+#[derive(Debug, Clone)]
+pub struct SeqClientEvent {
+    pub seq: u32,
+    pub event: ClientEvent,
+}
+
+impl Message for SeqClientEvent {
+    type Result = ();
+}
+
 #[repr(transparent)]
 struct WsMessage(tungstenite::Message);
 
@@ -39,14 +60,7 @@ impl From<UploadPayload> for WsMessage {
     }
 }
 
-pub enum ConnectType {
-    New(Identify),
-    Reconnect(Resume),
-}
-pub struct ConnectOption {
-    pub wss_gateway: String,
-    pub connect_type: ConnectType,
-}
+
 
 pub struct Connection {
     /// websocket 连接
@@ -70,58 +84,6 @@ pub enum ConnectError {
 }
 
 impl ConnectOption {
-    // 同步连接，以后再实现
-    /*     pub fn connect(self) -> Result<Result<Connection, ConnectError>, tungstenite::Error> {
-        let (mut ws, _) = connect(self.wss_gateway)?;
-        // if !resp.status().is_success() {
-        //     return Ok(());
-        // }
-
-        // 1. 连接到 Gateway
-        let hello: Option<DownloadPayload> = WsMessage(ws.read_message()?).into();
-
-        let heartbeat_interval = match hello {
-            Some(DownloadPayload::Hello { heartbeat_interval } )=> {
-                heartbeat_interval
-            },
-            _ => {
-                return Ok(Err(ConnectError::MissingHello))
-            }
-        };
-
-        // 2. 鉴权连接
-        ws.write_message(
-            WsMessage::from(
-                UploadPayload::Identify(self.identify)
-            ).0
-        )?;
-
-        // 3. 发送心跳
-
-        let resp: Option<DownloadPayload> = WsMessage(ws.read_message()?).into();
-
-        let ready = match resp {
-            Some(DownloadPayload::Dispatch { event: Event::Ready(ready), seq:_ } )=> {
-                ws.write_message(
-                    WsMessage::from(
-                        UploadPayload::Heartbeat(None)
-                    ).0
-                )?;
-                ready
-            },
-            _ => {
-                return Ok(Err(ConnectError::AuthFailed))
-            }
-        };
-
-
-        Ok(Ok(Connection {
-            ws,
-            ready,
-            heartbeat_interval,
-        }))
-    } */
-
     pub async fn connect_tokio(self) -> Result<ConnectionTokio, ConnectError> {
         use ConnectError::*;
         let (mut ws, _) = connect_async(self.wss_gateway).await.map_err(Ws)?;
@@ -227,42 +189,69 @@ impl ConnectionTokio {
         let latest_seq_clone = latest_seq.clone();
         let hb_ack_missed_clone = hb_ack_missed.clone();
         let download_bus = async move {
-            while let Some(Ok(message)) = rx.next().await {
-                let msg_bdg = message.clone();
-                if let Option::<DownloadPayload>::Some(download) = WsMessage(message).into() {
-                    match download {
-                        DownloadPayload::Dispatch { event, seq } => {
-                            latest_seq_clone.store(seq, Ordering::Relaxed);
-                            // 分发事件
-                            event_broadcast_sender
-                                .send((*event, seq))
-                                .unwrap_or_default();
+            match rx.next().await {
+                None => {
+                    // 服务端关闭连接
+                    return false;
+                }
+                Some(Err(_e)) => {
+                    // 服务端关闭连接
+                    return false;
+                }
+                Some(Ok(message)) => {
+                    if let tokio_tungstenite::tungstenite::Message::Close(cf) = message {
+                        if let Some(cf) = cf {
+                            log::debug!("ws client recieve close frame: {:?}", cf);
+                            if let CloseCode::Reserved(code) = cf.code {
+                                match code {
+                                    4009 | 4900..=4913=> {
+                                        log::debug!("ws will retry connect with code: {code}");
+                                        return true;
+                                    }
+                                    _ => {}
+                                }
+                            }
                         }
-                        DownloadPayload::Heartbeat => {
-                            // 收到服务端心跳，把应答缺失置零
-                            hb_ack_missed_clone.store(0, Ordering::Release)
-                        }
-                        DownloadPayload::Reconnect => {
-                            // 建立连接后应该不能收到重连通知
-                            // 重连通知
-                        }
-                        DownloadPayload::InvalidSession => {
-                            // 无效对话
-                        }
-                        DownloadPayload::Hello {
-                            heartbeat_interval: _,
-                        } => {
-                            // 建立连接后应该不能收到hello消息
-                        }
-                        DownloadPayload::HeartbeatAck => {
-                            // 收到服务端心跳，把应答缺失置零
-                            hb_ack_missed_clone.store(0, Ordering::Release)
-                        }
+                        // 服务端关闭连接
+                        return false;
                     }
-                } else {
-                    println!("无法解析的下行消息 {msg_bdg:?}")
+                    let msg_bdg = message.clone();
+                    if let Option::<DownloadPayload>::Some(download) = WsMessage(message).into() {
+                        match download {
+                            DownloadPayload::Dispatch { event, seq } => {
+                                latest_seq_clone.store(seq, Ordering::Relaxed);
+                                // 分发事件
+                                event_broadcast_sender
+                                    .send((*event, seq))
+                                    .unwrap_or_default();
+                            }
+                            DownloadPayload::Heartbeat => {
+                                // 收到服务端心跳，把应答缺失置零
+                                hb_ack_missed_clone.store(0, Ordering::Release)
+                            }
+                            DownloadPayload::Reconnect => {
+                                // 建立连接后应该不能收到重连通知
+                                // 重连通知
+                            }
+                            DownloadPayload::InvalidSession => {
+                                // 无效对话
+                            }
+                            DownloadPayload::Hello {
+                                heartbeat_interval: _,
+                            } => {
+                                // 建立连接后应该不能收到hello消息
+                            }
+                            DownloadPayload::HeartbeatAck => {
+                                // 收到服务端心跳，把应答缺失置零
+                                hb_ack_missed_clone.store(0, Ordering::Release)
+                            }
+                        }
+                    } else {
+                        println!("无法解析的下行消息 {msg_bdg:?}")
+                    }
                 }
             }
+            false
         };
 
         // spawn 心跳task
@@ -295,6 +284,7 @@ impl ConnectionTokio {
             shard: self.ready.shard,
             session_id: self.ready.session_id,
             token: self.token,
+            subscribers: Vec::new(),
         }
     }
 }
@@ -302,12 +292,12 @@ impl ConnectionTokio {
 #[derive(Debug)]
 pub struct WsClient {
     upload_bus_task: JoinHandle<()>,
-    download_bus_task: JoinHandle<()>,
+    download_bus_task: JoinHandle<bool>,
     heartbeat_task: JoinHandle<()>,
     event: tokio::sync::broadcast::Sender<SeqEvent>,
     latest_seq: Arc<AtomicU32>,
     hb_ack_missed: Arc<AtomicU8>,
-
+    pub subscribers: Vec<Recipient<SeqClientEvent>>,
     pub shard: Option<[u32; 2]>,
     pub token: String,
     pub session_id: String,
@@ -346,3 +336,90 @@ impl WsClient {
         }
     }
 }
+
+use actix::prelude::*;
+
+use super::ConnectOption;
+impl Actor for WsClient {
+    type Context = Context<Self>;
+}
+
+impl Handler<DownloadPayload> for WsClient {
+    type Result = ();
+    fn handle(&mut self, msg: DownloadPayload, _ctx: &mut Self::Context) -> Self::Result {
+        match msg {
+            DownloadPayload::Dispatch { event, seq } => {
+                self.latest_seq.store(seq, Ordering::Relaxed);
+                let e = match *event {
+                    Event::AtMessageCreate(e) => {
+                        SeqClientEvent {
+                            seq,
+                            event: ClientEvent::AtMessageCreate(e.into()),
+                        }
+                    },
+                    Event::MessageAuditPass(e) => {
+                        SeqClientEvent {
+                            seq,
+                            event: ClientEvent::MessageAuditPass(e.into()),
+                        }
+                    },
+                    Event::MessageAuditReject(e) => {
+                        SeqClientEvent {
+                            seq,
+                            event: ClientEvent::MessageAuditReject(e.into()),
+                        }
+                    },
+                    Event::MessgaeReactionAdd(e) => {
+                        SeqClientEvent {
+                            seq,
+                            event: ClientEvent::MessgaeReactionAdd(e.into()),
+                        }
+                    },
+                    Event::MessgaeReactionRemove(e) => {
+                        SeqClientEvent {
+                            seq,
+                            event: ClientEvent::MessgaeReactionRemove(e.into()),
+                        }
+                    },
+                    Event::Ready(e) => {
+                        log::debug!("ws client recieve ready event: {e:?}");
+                        return;
+                    },
+                    Event::Resumed(e) => {
+                        log::debug!("ws client recieve resumed event: {e}");
+                        return;
+                    },
+                    Event::Unknown => {
+                        log::debug!("ws client recieve unknown event: {:?}", event);
+                        return;
+                    },
+                };
+                // 分发事件
+                for subscr in &self.subscribers {
+                    subscr.do_send(e.clone());
+                }
+            }
+            DownloadPayload::Heartbeat => {
+                // 收到服务端心跳，把应答缺失置零
+                self.hb_ack_missed.store(0, Ordering::Release)
+            }
+            DownloadPayload::Reconnect => {
+                // 建立连接后应该不能收到重连通知
+                // 重连通知
+            }
+            DownloadPayload::InvalidSession => {
+                // 无效对话
+            }
+            DownloadPayload::Hello {
+                heartbeat_interval: _,
+            } => {
+                // 建立连接后应该不能收到hello消息
+            }
+            DownloadPayload::HeartbeatAck => {
+                // 收到服务端心跳，把应答缺失置零
+                self.hb_ack_missed.store(0, Ordering::Release)
+            }
+        }
+    }
+}
+
