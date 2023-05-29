@@ -202,7 +202,7 @@ impl ConnectionTokio {
                     if let tokio_tungstenite::tungstenite::Message::Close(cf) = message {
                         if let Some(cf) = cf {
                             log::debug!("ws client recieve close frame: {:?}", cf);
-                            if let CloseCode::Reserved(code) = cf.code {
+                            if let CloseCode::Library(code) = cf.code {
                                 match code {
                                     4009 | 4900..=4913=> {
                                         log::debug!("ws will retry connect with code: {code}");
