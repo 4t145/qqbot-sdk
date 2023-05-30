@@ -3,15 +3,49 @@ qq频道机器人sdk
 
 ## 使用例
 ```rust
+use std::sync::Arc;
+
+use qqbot_sdk::{
+    api::Authority,
+    bot::{Bot, BotBuilder, BotError, Handler, MessageBuilder},
+    client::tungstenite_client::SeqEvent,
+    websocket::{Intends, Event},
+};
+
 #[tokio::main]
 async fn main() {
+    std::env::set_var("RUST_LOG", "debug,qqbot_sdk=DEBUG");
+    env_logger::builder().is_test(true).try_init().unwrap();
     async_main().await.unwrap();
 }
 
-async fn async_main() -> Result<(), Error> {
-    std::env::set_var("RUST_LOG", "debug,qqbot_sdk=DEBUG");
-    env_logger::builder().is_test(true).try_init().unwrap();
-    log::info!("Hello, world!");
+#[derive(Debug)]
+pub struct EchoHandler;
+
+impl Handler for EchoHandler {
+    fn handle(&self, event: SeqEvent, ctx: Arc<Bot>) -> Result<(), BotError> {
+        tokio::spawn(async move {
+            match event.0 {
+                Event::AtMessageCreate(m) => {
+                    let channel_id = m.channel_id;
+                    ctx.post_message(
+                        channel_id,
+                        &MessageBuilder::default()
+                            .content(m.content.as_str())
+                            .reply_to(m.as_ref())
+                            .build()
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                }
+                other => log::info!("event: {:?}", other),
+            }
+        });
+        Ok(())
+    }
+}
+async fn async_main() -> Result<(), BotError> {
     // 启动webapi client
     let auth = Authority::Bot {
         app_id: &std::env::var("APP_ID").unwrap(),
@@ -23,29 +57,12 @@ async fn async_main() -> Result<(), Error> {
         .build()
         .await
         .unwrap();
-    let me = bot.about_me().await?;
-    log::info!("bot: {:?}", me);
+    log::info!("bot: {:?}", bot.about_me().await?);
     bot.fetch_my_guilds().await?;
     log::info!("guilds count: {:?}", bot.cache().get_guilds_count().await);
-    // echo
-    while let Ok((e, _seq)) = bot.subscribe().recv().await {
-        match e {
-            qqbot_sdk::websocket::Event::AtMessageCreate(m) => {
-                let channel_id = m.channel_id;
-                bot.post_message(
-                    &Channel { channel_id },
-                    &MessageBuilder::default()
-                        .content(m.content.as_str())
-                        .reply_to(m.as_ref())
-                        .build()
-                        .unwrap(),
-                )
-                .await
-                .unwrap();
-            }
-            other => log::info!("event: {:?}", other),
-        }
-    }
+    bot.register_handler("echo", EchoHandler).await;
+    // wait for ctrl-c
+    tokio::signal::ctrl_c().await.unwrap();
     Ok(())
 }
 ```

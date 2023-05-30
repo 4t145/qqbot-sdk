@@ -19,7 +19,7 @@ use crate::{
         websocket::Gateway,
         Authority,
     },
-    client::{reqwest_client::ApiClient, tungstenite_client::WsClient, ConnectOption, ConnectType},
+    client::{reqwest_client::ApiClient, ConnectOption, ConnectType},
     model::{Guild, MessageSend, User},
     websocket::{Event, Identify},
 };
@@ -128,12 +128,12 @@ impl<'a> BotBuilder<'a> {
         let connect_option = ConnectOption {
             wss_gateway: url,
             connect_type: ConnectType::New(identify),
-            retry_times: todo!(),
-            retry_interval: todo!(),
+            retry_times: 5,
+            retry_interval: tokio::time::Duration::from_secs(30),
         };
 
         // ws连接
-        let (rx, handle) = connect_option
+        let (rx, _handle) = connect_option
             .run_with_ctrl_c();
         
         Ok(Bot {
@@ -293,9 +293,4 @@ impl Bot {
             }
         }
     }
-}
-
-use actix::prelude::*;
-impl Actor for Bot {
-    type Context = Context<Self>;
 }
