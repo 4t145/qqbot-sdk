@@ -1,26 +1,20 @@
-use serde_with::Seq;
-use time::Duration;
 use tokio::{
-    sync::{broadcast, oneshot, Notify},
+    sync::{broadcast, Notify},
     task::JoinHandle,
-    time::Interval,
 };
 use tungstenite::{protocol::frame::coding::CloseCode, WebSocket};
 
 use futures_util::{Future, SinkExt, StreamExt};
-use std::{
-    future::IntoFuture,
-    sync::{
-        atomic::{AtomicU32, AtomicU8, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicU32, AtomicU8, Ordering},
+    Arc,
 };
 use tokio_tungstenite::{connect_async, WebSocketStream};
 
 use crate::{
     client::ConnectType,
     model::{MessageAudited, MessageBotRecieved, MessageReaction},
-    websocket::{DownloadPayload, Event, Identify, Ready, Resume, UploadPayload},
+    websocket::{DownloadPayload, Event, Ready, Resume, UploadPayload},
 };
 
 use super::ConnectOption;
@@ -137,7 +131,6 @@ impl ConnectOption {
                 }
             }
         }
-
     }
 
     async fn connect(&self) -> Result<ConnectionTokio, ConnectError> {
@@ -255,6 +248,8 @@ impl ConnectionTokio {
 
         // 收消息总线
         let latest_seq = latest_seq_raw.clone();
+        let hb_counter_dl = Arc::new(AtomicU8::new(0));
+        let hb_counter_hb = hb_counter_dl.clone();
         let download_bus = async move {
             match rx.next().await {
                 None => {
@@ -287,6 +282,8 @@ impl ConnectionTokio {
                         match download {
                             DownloadPayload::Dispatch { event, seq } => {
                                 latest_seq.store(seq, Ordering::Relaxed);
+                                // 存活确认
+                                hb_counter_dl.store(0, Ordering::SeqCst);
                                 // 分发事件
                                 event_broadcast_sender
                                     .send((*event, seq))
@@ -309,6 +306,7 @@ impl ConnectionTokio {
                             }
                             DownloadPayload::HeartbeatAck => {
                                 // 收到服务端心跳，把应答缺失置零
+                                hb_counter_dl.store(0, Ordering::SeqCst);
                             }
                         }
                     } else {
@@ -333,6 +331,7 @@ impl ConnectionTokio {
             )
             .await
             .unwrap_or_default();
+            hb_counter_hb.fetch_add(1, Ordering::SeqCst);
         };
 
         let download_bus_task = tokio::spawn(download_bus);
@@ -343,10 +342,8 @@ impl ConnectionTokio {
             heartbeat_task,
             latest_seq: latest_seq_raw,
             // hb_ack_missed: hb_ack_missed_raw,
-            shard: self.ready.shard,
             session_id: self.ready.session_id,
-            token: self.token,
-            option: self.option
+            option: self.option,
         }
     }
 }
@@ -358,8 +355,6 @@ pub struct WsClient {
     latest_seq: Arc<AtomicU32>,
     // hb_ack_missed: Arc<AtomicU8>,
     option: ConnectOption,
-    pub shard: Option<[u32; 2]>,
-    pub token: String,
     pub session_id: String,
 }
 
@@ -376,12 +371,10 @@ impl WsClient {
         ConnectOption {
             connect_type: ConnectType::Reconnect(Resume {
                 seq: self.latest_seq(),
-                token: self.token,
+                token: self.option.connect_type.get_token().to_owned(),
                 session_id: self.session_id,
             }),
             ..self.option
         }
     }
-
-
 }

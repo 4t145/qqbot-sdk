@@ -11,6 +11,14 @@ pub enum ConnectType {
     Reconnect(Resume),
 }
 
+impl ConnectType {
+    pub fn get_token(&self) -> &str {
+        match self {
+            ConnectType::New(Identify { token, .. }) => token,
+            ConnectType::Reconnect(Resume { token, .. }) => token,
+        }
+    }
+}
 #[derive(Debug, Clone)]
 pub struct ConnectOption {
     pub wss_gateway: String,
