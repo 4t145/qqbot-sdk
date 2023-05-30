@@ -35,7 +35,7 @@ pub use self::handler::Handler;
 #[derive(Debug, Clone)]
 pub struct Bot {
     api_client: Arc<ApiClient>,
-    ws_client: Arc<WsClient>,
+    ws_event_rx: Arc<tokio::sync::broadcast::Receiver<(Event, u32)>>,
     cache: BotCache,
     handlers: Arc<RwLock<HashMap<String, JoinHandle<()>>>>, // dispacher: Arc<RwLock<EventDispatcher>>,
                                                             // filters: Arc<RwLock<HashMap<GuildId, JoinHandle<()>>>>
@@ -128,20 +128,17 @@ impl<'a> BotBuilder<'a> {
         let connect_option = ConnectOption {
             wss_gateway: url,
             connect_type: ConnectType::New(identify),
+            retry_times: todo!(),
+            retry_interval: todo!(),
         };
 
         // ws连接
-        let ws_connect = connect_option
-            .connect_tokio()
-            .await
-            .map_err(BotBuildError::WsConnectError)?;
-
-        // ws启动客户端
-        let ws_client = ws_connect.luanch_client().await;
+        let (rx, handle) = connect_option
+            .run_with_ctrl_c();
         
         Ok(Bot {
             api_client: Arc::new(api_client),
-            ws_client: Arc::new(ws_client),
+            ws_event_rx: Arc::new(rx),
             cache: BotCache::default(),
             handlers: Arc::new(RwLock::new(HashMap::new())),
             // dispacher: Arc::new(RwLock::new(EventDispatcher::default())),
@@ -158,7 +155,7 @@ pub enum BotError {
 /// Handle Events
 impl Bot {
     pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<(Event, u32)> {
-        self.ws_client.subscribe_event()
+        self.ws_event_rx.resubscribe()
     }
     pub async fn register_boxed_handler(&self, name: String, handler: Box<dyn Handler>) {
         let mut rx = self.subscribe();
