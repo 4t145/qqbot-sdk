@@ -200,9 +200,9 @@ impl ConnectOption {
     }
     pub fn run(
         self,
+        event_broadcast_sender: broadcast::Sender<SeqEvent>,
         shutdown_signal: impl Future<Output = ()> + Send + 'static,
-    ) -> (broadcast::Receiver<SeqEvent>, JoinHandle<()>) {
-        let (event_broadcast_sender, event_broadcast_rx) = broadcast::channel(1024);
+    ) -> JoinHandle<()> {
         let shutdown_notifier = Arc::new(Notify::new());
         let shutdown_notifiee = shutdown_notifier.clone();
         let reconnect_task =
@@ -211,16 +211,16 @@ impl ConnectOption {
             shutdown_signal.await;
             shutdown_notifier.notify_one();
         });
-        (event_broadcast_rx, reconnect_task)
+        reconnect_task
     }
 
-    pub fn run_with_ctrl_c(self) -> (broadcast::Receiver<SeqEvent>, JoinHandle<()>) {
+    pub fn run_with_ctrl_c(self, event_broadcast_sender: broadcast::Sender<SeqEvent>) -> JoinHandle<()> {
         let shutdown_signal = async {
             tokio::signal::ctrl_c()
                 .await
                 .expect("failed to get CTRL+C signal");
         };
-        self.run(shutdown_signal)
+        self.run(event_broadcast_sender, shutdown_signal)
     }
 }
 

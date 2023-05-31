@@ -1,29 +1,24 @@
 mod dispacher;
 mod handler;
 mod message;
+mod methods;
+mod shard;
 mod user;
-
-pub use message::*;
-use tokio::{sync::RwLock, task::JoinHandle};
-pub use user::*;
 
 use crate::{
     api::{
-        guild::{GetGuild, GetGuildRequest},
-        message::{PostMessage, PostMessageRequest},
-        reaction::{
-            DeleteEmojiReaction, EmojiReactionDescriptor, GetEmojiReactionUserList,
-            GetEmojiReactionUserListRequest, SendEmojiReaction,
-        },
-        user::GetMe,
-        websocket::Gateway,
+        websocket::{Gateway, GatewayBot},
         Authority,
     },
     client::{reqwest_client::ApiClient, ConnectOption, ConnectType},
-    model::{Guild, MessageSend, User},
+    model::Guild,
     websocket::{Event, Identify},
 };
+pub use message::*;
+pub use shard::Shards;
 use std::{collections::HashMap, sync::Arc};
+use tokio::{sync::RwLock, task::JoinHandle};
+pub use user::*;
 
 pub use self::handler::Handler;
 
@@ -38,7 +33,6 @@ pub struct Bot {
     ws_event_rx: Arc<tokio::sync::broadcast::Receiver<(Event, u32)>>,
     cache: BotCache,
     handlers: Arc<RwLock<HashMap<String, JoinHandle<()>>>>, // dispacher: Arc<RwLock<EventDispatcher>>,
-                                                            // filters: Arc<RwLock<HashMap<GuildId, JoinHandle<()>>>>
 }
 
 #[derive(Debug, Clone, Default)]
@@ -63,10 +57,11 @@ impl BotCache {
         self.guilds.read().await.len()
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BotBuilder<'a> {
     authority: Option<Authority<'a>>,
-    shard: Option<(u32, u32)>,
+    shards: Option<Shards>,
+    auto_shard: bool,
     intents: u32,
 }
 
@@ -76,15 +71,7 @@ pub enum BotBuildError {
     ApiError(reqwest::Error),
     WsConnectError(crate::client::tungstenite_client::ConnectError),
 }
-impl<'a> Default for BotBuilder<'a> {
-    fn default() -> Self {
-        Self {
-            authority: None,
-            shard: Some((0, 1)),
-            intents: 0,
-        }
-    }
-}
+
 impl<'a> BotBuilder<'a> {
     pub fn auth(self, authority: Authority<'a>) -> Self {
         Self {
@@ -92,9 +79,9 @@ impl<'a> BotBuilder<'a> {
             ..self
         }
     }
-    pub fn shard(self, shard: u32, total: u32) -> Self {
+    pub fn shards(self, shards: Shards) -> Self {
         Self {
-            shard: Some((shard, total)),
+            shards: Some(shards),
             ..self
         }
     }
@@ -104,41 +91,73 @@ impl<'a> BotBuilder<'a> {
             ..self
         }
     }
-    pub async fn build(self) -> Result<Bot, BotBuildError> {
+    pub fn auto_shard(self, auto_shard: bool) -> Self {
+        Self { auto_shard, ..self }
+    }
+    pub async fn build(mut self) -> Result<Bot, BotBuildError> {
         let auth = self.authority.ok_or(BotBuildError::NoAuthority)?;
         let token = auth.token();
         let api_client = ApiClient::new(auth);
-        let url = api_client
-            .send::<Gateway>(&())
-            .await
-            .map_err(BotBuildError::ApiError)?
-            .as_result()
-            .unwrap()
-            .url;
+        let url = if self.auto_shard {
+            let response = api_client
+                .send::<GatewayBot>(&())
+                .await
+                .map_err(BotBuildError::ApiError)?
+                .as_result()
+                .unwrap();
+            self.shards = Some(Shards::new_all(response.shards));
+            response.url
+        } else {
+            api_client
+                .send::<Gateway>(&())
+                .await
+                .map_err(BotBuildError::ApiError)?
+                .as_result()
+                .unwrap()
+                .url
+        };
         log::info!("ws gate url: {}", url);
-        // 启动websocket client
-        let identify = Identify {
-            token,
-            intents: self.intents,
-            shard: self.shard.map(|s| [s.0, s.1]),
-            properties: std::collections::HashMap::new(),
-        };
+        let (event_tx, event_rx) = tokio::sync::broadcast::channel(128);
+        if let Some(shards) = self.shards {
+            let total = shards.total;
+            for shard_idx in shards.using_shards {
+                // 启动websocket client
+                let identify = Identify {
+                    token: token.clone(),
+                    intents: self.intents,
+                    shard: Some([shard_idx, total]),
+                    properties: std::collections::HashMap::new(),
+                };
+                // ws连接设置
+                let connect_option = ConnectOption {
+                    wss_gateway: url.clone(),
+                    connect_type: ConnectType::New(identify),
+                    retry_times: 5,
+                    retry_interval: tokio::time::Duration::from_secs(30),
+                };
+                let _handle = connect_option.run_with_ctrl_c(event_tx.clone());
+            }
+        } else {
+            // standalone
+            let identify = Identify {
+                token,
+                intents: self.intents,
+                shard: None,
+                properties: std::collections::HashMap::new(),
+            };
+            // ws连接设置
+            let connect_option = ConnectOption {
+                wss_gateway: url,
+                connect_type: ConnectType::New(identify),
+                retry_times: 5,
+                retry_interval: tokio::time::Duration::from_secs(30),
+            };
+            let _handle = connect_option.run_with_ctrl_c(event_tx);
+        }
 
-        // ws连接设置
-        let connect_option = ConnectOption {
-            wss_gateway: url,
-            connect_type: ConnectType::New(identify),
-            retry_times: 5,
-            retry_interval: tokio::time::Duration::from_secs(30),
-        };
-
-        // ws连接
-        let (rx, _handle) = connect_option
-            .run_with_ctrl_c();
-        
         Ok(Bot {
             api_client: Arc::new(api_client),
-            ws_event_rx: Arc::new(rx),
+            ws_event_rx: Arc::new(event_rx),
             cache: BotCache::default(),
             handlers: Arc::new(RwLock::new(HashMap::new())),
             // dispacher: Arc::new(RwLock::new(EventDispatcher::default())),
@@ -181,116 +200,6 @@ impl Bot {
     pub async fn unregister_handler(&self, name: &str) {
         if let Some(jh) = self.handlers.write().await.remove(name) {
             jh.abort();
-        }
-    }
-}
-
-impl Bot {
-    pub fn cache(&self) -> BotCache {
-        self.cache.clone()
-    }
-    pub async fn post_message(
-        &self,
-        channel_id: u64,
-        message: &MessageSend<'_>,
-    ) -> Result<crate::model::MessageBotRecieved, BotError> {
-        let request = PostMessageRequest::new(channel_id, message);
-        self.api_client
-            .send::<PostMessage>(&request)
-            .await
-            .map_err(BotError::ApiError)?
-            .as_result()
-            .map_err(BotError::BadRequest)
-    }
-
-    pub async fn about_me(&self) -> Result<crate::model::User, BotError> {
-        self.api_client
-            .send::<GetMe>(&())
-            .await
-            .map_err(BotError::ApiError)?
-            .as_result()
-            .map_err(BotError::BadRequest)
-    }
-
-    pub async fn fetch_my_guilds(&self) -> Result<(), BotError> {
-        let mut req = crate::api::user::GetMyGuildsRequest::default();
-        loop {
-            let guilds = self
-                .api_client
-                .send::<crate::api::user::GetMyGuilds>(&req)
-                .await
-                .map_err(BotError::ApiError)?
-                .as_result()
-                .map_err(BotError::BadRequest)?;
-            req.after = guilds.last().map(|x| x.id);
-            let len = guilds.len();
-            log::debug!("guilds: {:#?}", guilds);
-            self.cache.cache_many_guilds(guilds).await;
-            if len < 100 {
-                return Ok(());
-            }
-        }
-    }
-
-    pub async fn get_guild_from_remote(&self, guild_id: u64) -> Result<Guild, BotError> {
-        self.api_client
-            .send::<GetGuild>(&GetGuildRequest { guild_id })
-            .await
-            .map_err(BotError::ApiError)?
-            .as_result()
-            .map_err(BotError::BadRequest)
-    }
-
-    pub async fn create_reaction(
-        &self,
-        reaction: &EmojiReactionDescriptor,
-    ) -> Result<(), BotError> {
-        self.api_client
-            .send::<SendEmojiReaction>(reaction)
-            .await
-            .map_err(BotError::ApiError)?
-            .as_result()
-            .map_err(BotError::BadRequest)?;
-        Ok(())
-    }
-
-    pub async fn delete_reaction(
-        &self,
-        reaction: &EmojiReactionDescriptor,
-    ) -> Result<(), BotError> {
-        self.api_client
-            .send::<DeleteEmojiReaction>(reaction)
-            .await
-            .map_err(BotError::ApiError)?
-            .as_result()
-            .map_err(BotError::BadRequest)?;
-        Ok(())
-    }
-
-    pub async fn get_reaction_users(
-        &self,
-        reaction: &EmojiReactionDescriptor,
-    ) -> Result<Vec<User>, BotError> {
-        let mut req: GetEmojiReactionUserListRequest =
-            GetEmojiReactionUserListRequest::new(reaction);
-        let mut collector = vec![];
-        loop {
-            let resp = self
-                .api_client
-                .send::<GetEmojiReactionUserList>(&req)
-                .await
-                .map_err(BotError::ApiError)?
-                .as_result()
-                .map_err(BotError::BadRequest)?;
-
-            collector.extend(resp.users);
-            if let Some(cookie) = resp.cookie {
-                req.next(cookie);
-            }
-            if resp.is_end {
-                collector.dedup();
-                break Ok(collector);
-            }
         }
     }
 }
