@@ -57,8 +57,8 @@ pub enum Event {
     MessageAuditReject(Box<MessageAudited>),
     Ready(Box<Ready>),
     Resumed(String),
-    MessgaeReactionAdd(Box<MessageReaction>),
-    MessgaeReactionRemove(Box<MessageReaction>),
+    MessageReactionAdd(Box<MessageReaction>),
+    MessageReactionRemove(Box<MessageReaction>),
     #[serde(other)]
     Unknown,
 }

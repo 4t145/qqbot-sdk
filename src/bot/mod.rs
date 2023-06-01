@@ -30,7 +30,7 @@ pub use self::handler::Handler;
 #[derive(Debug, Clone)]
 pub struct Bot {
     api_client: Arc<ApiClient>,
-    ws_event_rx: Arc<tokio::sync::broadcast::Receiver<(Event, u32)>>,
+    ws_event_tx: Arc<tokio::sync::broadcast::Sender<(Event, u32)>>,
     cache: BotCache,
     handlers: Arc<RwLock<HashMap<String, JoinHandle<()>>>>, // dispacher: Arc<RwLock<EventDispatcher>>,
 }
@@ -117,7 +117,7 @@ impl<'a> BotBuilder<'a> {
                 .url
         };
         log::info!("ws gate url: {}", url);
-        let (event_tx, event_rx) = tokio::sync::broadcast::channel(128);
+        let (event_tx, _event_rx) = tokio::sync::broadcast::channel(128);
         if let Some(shards) = self.shards {
             let total = shards.total;
             for shard_idx in shards.using_shards {
@@ -142,7 +142,7 @@ impl<'a> BotBuilder<'a> {
             let identify = Identify {
                 token,
                 intents: self.intents,
-                shard: None,
+                shard: Some([0,1]),
                 properties: std::collections::HashMap::new(),
             };
             // ws连接设置
@@ -152,12 +152,12 @@ impl<'a> BotBuilder<'a> {
                 retry_times: 5,
                 retry_interval: tokio::time::Duration::from_secs(30),
             };
-            let _handle = connect_option.run_with_ctrl_c(event_tx);
+            let _handle = connect_option.run_with_ctrl_c(event_tx.clone());
         }
 
         Ok(Bot {
             api_client: Arc::new(api_client),
-            ws_event_rx: Arc::new(event_rx),
+            ws_event_tx: Arc::new(event_tx),
             cache: BotCache::default(),
             handlers: Arc::new(RwLock::new(HashMap::new())),
             // dispacher: Arc::new(RwLock::new(EventDispatcher::default())),
@@ -174,7 +174,7 @@ pub enum BotError {
 /// Handle Events
 impl Bot {
     pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<(Event, u32)> {
-        self.ws_event_rx.resubscribe()
+        self.ws_event_tx.subscribe()
     }
     pub async fn register_boxed_handler(&self, name: String, handler: Box<dyn Handler>) {
         let mut rx = self.subscribe();

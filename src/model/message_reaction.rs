@@ -1,18 +1,22 @@
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
+use serde_with::{serde_as, DisplayFromStr};
 
 use super::{emoji::Emoji, ChannelId, GuildId};
 
+#[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessageReaction {
     pub user_id: String,
+    #[serde_as(as = "DisplayFromStr")]
     pub guild_id: GuildId,
+    #[serde_as(as = "DisplayFromStr")]
     pub channel_id: ChannelId,
-    pub target: String,
+    pub target: ReactionTarget,
     pub emoji: Emoji,
 }
 
-#[derive(Debug, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Clone, Copy, Serialize_repr, Deserialize_repr)]
 #[repr(u32)]
 #[non_exhaustive]
 pub enum ReactionTargetType {
@@ -26,7 +30,7 @@ pub enum ReactionTargetType {
     Reply = 3,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ReactionTarget {
     pub id: String,
     pub r#type: ReactionTargetType,

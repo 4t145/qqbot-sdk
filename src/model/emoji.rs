@@ -68,7 +68,7 @@ impl<'de> Deserialize<'de> for Emoji {
                 A: serde::de::MapAccess<'de>,
             {
                 let mut tp: Option<u32> = None;
-                let mut id: Option<String> = None;
+                let mut id: Option<&str> = None;
                 while let Some(key) = map.next_key()? {
                     match key {
                         "type" => {
