@@ -17,3 +17,4 @@ pub struct Payload {
     #[serde(rename = "d", skip_serializing_if = "Option::is_none")]
     pub(crate) data: Option<serde_json::Value>,
 }
+

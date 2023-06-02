@@ -105,6 +105,7 @@ impl ConnectOption {
                                 // 服务端关闭连接
                                 if let Ok(true) = will_reconn {
                                     conn_option = cli.abort();
+                                    interval.tick().await;
                                     continue 'connect;
                                 }
                             }
@@ -127,9 +128,9 @@ impl ConnectOption {
                         log::error!("ws client reconnect failed");
                         break 'connect;
                     }
-                    interval.tick().await;
                 }
             }
+            interval.tick().await;
         }
     }
 

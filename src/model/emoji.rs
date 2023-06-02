@@ -9,11 +9,40 @@ use crate::api::reaction::EmojiReactionDescriptor;
 
 use super::MessageBotRecieved;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Deserialize, Serialize)]
 #[repr(u32)]
+#[serde(try_from = "EmojiJson", into = "EmojiJson")] 
 pub enum Emoji {
     System(u32) = 1,
     Raw(u32) = 2,
+}
+
+impl TryFrom<EmojiJson> for Emoji {
+    type Error = String;
+
+    fn try_from(value: EmojiJson) -> Result<Self, Self::Error> {
+        match value.r#type {
+            1 => Ok(Emoji::System(value.id.parse().map_err(|e| format!("cannot parse system emoji id <{id}>: {e}", id=value.id))?)),
+            2 => Ok(Emoji::Raw(value.id.parse().map_err(|e| format!("cannot parse raw emoji id <{id}>: {e}", id=value.id))?)),
+            _ => Err("Unknown emoji type".to_owned()),
+        }
+    }
+}
+
+
+impl From<Emoji> for EmojiJson {
+    fn from(val: Emoji) -> Self {
+        match val {
+            Emoji::System(id) => EmojiJson {
+                r#type: 1,
+                id: id.to_string(),
+            },
+            Emoji::Raw(id) => EmojiJson {
+                r#type: 2,
+                id: id.to_string(),
+            },
+        }
+    }
 }
 
 impl Emoji {
@@ -33,80 +62,10 @@ impl Emoji {
     }
 }
 
-impl Serialize for Emoji {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("Emoji", 2)?;
-        let (tp, id) = match self {
-            Emoji::System(emoji) => (1, emoji.to_string()),
-            Emoji::Raw(emoji) => (2, emoji.to_string()),
-        };
-        s.serialize_field("type", &tp)?;
-        s.serialize_field("id", &id)?;
-        s.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for Emoji {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct EmojiVisitor;
-
-        impl<'de> Visitor<'de> for EmojiVisitor {
-            type Value = Emoji;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("struct Emoji")
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-            where
-                A: serde::de::MapAccess<'de>,
-            {
-                let mut tp: Option<u32> = None;
-                let mut id: Option<&str> = None;
-                while let Some(key) = map.next_key()? {
-                    match key {
-                        "type" => {
-                            if tp.is_some() {
-                                return Err(serde::de::Error::duplicate_field("type"));
-                            }
-                            tp = Some(map.next_value()?);
-                        }
-                        "id" => {
-                            if id.is_some() {
-                                return Err(serde::de::Error::duplicate_field("id"));
-                            }
-                            id = Some(map.next_value()?);
-                        }
-                        _ => {
-                            let _: serde::de::IgnoredAny = map.next_value()?;
-                        }
-                    }
-                }
-                let tp = tp.ok_or_else(|| serde::de::Error::missing_field("type"))?;
-                let id = id.ok_or_else(|| serde::de::Error::missing_field("id"))?;
-                match tp {
-                    1 => Ok(Emoji::System(id.parse::<u32>().map_err(|e| {
-                        serde::de::Error::custom(format!(
-                            "cannot parse system emoji id <{id}>: {e}"
-                        ))
-                    })?)),
-                    2 => Ok(Emoji::Raw(id.parse::<u32>().map_err(|e| {
-                        serde::de::Error::custom(format!("cannot parse raw emoji id <{id}>: {e}"))
-                    })?)),
-                    _ => Err(serde::de::Error::custom(format!(
-                        "unknown emoji type <{tp}>"
-                    ))),
-                }
-            }
-        }
-        deserializer.deserialize_struct("Emoji", &["type", "id"], EmojiVisitor)
-    }
+#[derive(Debug, Deserialize, Serialize)]
+struct EmojiJson {
+    r#type: u32,
+    id: String,
 }
 
 #[cfg(test)]

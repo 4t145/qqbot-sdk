@@ -20,16 +20,22 @@ impl From<Payload> for DownloadPayload {
     fn from(payload: Payload) -> Self {
         match payload.opcode {
             Opcode::Dispatch => {
-                dbg!(&payload);
-                let event = Box::new(
-                    serde_json::from_value::<Event>(json!({
-                        "tag": payload.tag,
-                        "data": payload.data,
-                    }))
-                    .unwrap(),
-                );
+                let json_value = json!({
+                    "tag": payload.tag,
+                    "data": payload.data,
+                });
+                log::trace!("convert payload to download payload json: {json_value}");
+                let event = match serde_json::from_value::<Event>(json_value) {
+                    Ok(download_payload) => download_payload,
+                    Err(e) => {
+                        log::warn!(
+                            "failed to convert payload to download payload json, error: {e}"
+                        );
+                        Event::Unknown
+                    }
+                };
                 DownloadPayload::Dispatch {
-                    event,
+                    event: Box::new(event),
                     seq: payload.seq.unwrap_or_default(),
                 }
             }
