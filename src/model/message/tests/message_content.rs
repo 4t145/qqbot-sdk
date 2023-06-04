@@ -15,8 +15,8 @@ fn test_macro() {
             .unwrap())
     );
     assert_eq!(
-        MessageContent::default().text(">>>>>>").at(123456789).link_channel(88888).text("<<<<>>>>").at_all().text("<><>>>"),
-        &mut ("&gt;&gt;&gt;&gt;&gt;&gt;<@!123456789><#88888>&lt;&lt;&lt;&gt;&gt;&gt;&gt;&gt;&gt;&lt;&lt;&lt;&gt;&gt;&gt;&gt;&gt;&gt;".parse::<MessageContent>().unwrap())
+        MessageContent::default().text(">>>>>>").at(123456789).text(" #88888 <<<<>>>>").at_all().text("<><>>>"),
+        &mut ("&gt;&gt;&gt;&gt;&gt;&gt;<@!123456789> #88888 &lt;&lt;&lt;&lt;&gt;&gt;&gt;&gt; @everyone &gt;&lt;&lt;&lt;&gt;&gt;&gt;&gt;&gt;&gt;".parse::<MessageContent>().unwrap())
     );
     // assert_eq!(
     //     content! {

@@ -39,14 +39,12 @@ impl FromStr for MessageSegment {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // don't parse channel, because it's not well supported
         if s.starts_with("<@!") && s.ends_with('>') {
             let id = s[3..s.len() - 1].parse::<u64>().map_err(|_| "Invalid id")?;
             Ok(MessageSegment::At(id))
         } else if s == "@everyone" {
             Ok(MessageSegment::AtAll)
-        } else if s.starts_with("<#") && s.ends_with('>') {
-            let id = s[2..s.len() - 1].parse::<u64>().map_err(|_| "Invalid id")?;
-            Ok(MessageSegment::Channel(id))
         } else if s.starts_with("<emoji:") && s.ends_with('>') {
             let id = s[7..s.len() - 1].parse::<u64>().map_err(|_| "Invalid id")?;
             Ok(MessageSegment::Emoji(id))

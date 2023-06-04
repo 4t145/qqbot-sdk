@@ -22,7 +22,8 @@ impl Handler for EchoHandler {
             match event {
                 ClientEvent::AtMessageCreate(m) => {
                     let channel_id = m.channel_id;
-                    ctx.post_message(
+                    let sender = &m.author.clone();
+                    match ctx.post_message(
                         channel_id,
                         &MessageBuilder::default()
                             .content(m.content.as_str())
@@ -30,8 +31,10 @@ impl Handler for EchoHandler {
                             .build()
                             .unwrap(),
                     )
-                    .await
-                    .unwrap();
+                    .await {
+                        Ok(_) => log::info!("echo: {:?}", sender),
+                        Err(e) => log::error!("echo: {:?}, error: {:?}", sender, e),
+                    }
                 }
                 other => log::info!("event: {:?}", other),
             }
@@ -56,6 +59,8 @@ async fn async_main() -> Result<(), BotError> {
     log::info!("guilds count: {:?}", bot.cache().get_guilds_count().await);
     bot.register_handler("echo", EchoHandler).await;
     // wait for ctrl-c
-    bot.await;
+    // bot.await;
+    // wait for ctrl-c
+    tokio::signal::ctrl_c().await.unwrap();
     Ok(())
 }
