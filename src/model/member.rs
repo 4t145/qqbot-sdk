@@ -1,10 +1,7 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::user::User;
-use time::{
-    serde::iso8601::{deserialize as isodeser, serialize as isoser},
-    OffsetDateTime,
-};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Member {
@@ -16,13 +13,8 @@ pub struct Member {
     #[serde(default)]
     /// 用户在频道内的身份组ID, 默认值可参考DefaultRoles
     pub roles: Vec<String>,
-    #[serde(
-        serialize_with = "isoser",
-        deserialize_with = "isodeser",
-        default = "crate::utils::unix_time_zero"
-    )]
     /// 用户加入频道的时间
-    pub joined_at: OffsetDateTime,
+    pub joined_at: DateTime<Utc>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

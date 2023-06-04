@@ -1,11 +1,7 @@
 use super::*;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
-use time::{
-    serde::iso8601::{deserialize as isodeser, serialize as isoser},
-    OffsetDateTime,
-};
-
+use chrono::{DateTime, Utc};
 mod markdown;
 pub use markdown::*;
 pub use message_id::*;
@@ -45,20 +41,12 @@ pub struct MessageBotRecieved {
     #[serde(default)]
     /// 消息内容
     pub content: String,
-    #[serde(
-        serialize_with = "isoser",
-        deserialize_with = "isodeser",
-        default = "crate::utils::unix_time_zero"
-    )]
+    #[serde(default)]
     /// 消息创建时间
-    pub timestamp: OffsetDateTime,
-    #[serde(
-        serialize_with = "isoser",
-        deserialize_with = "isodeser",
-        default = "crate::utils::unix_time_zero"
-    )]
+    pub timestamp: DateTime<Utc>,
+    #[serde(default)]
     /// 消息编辑时间
-    pub edited_timestamp: OffsetDateTime,
+    pub edited_timestamp: Option<DateTime<Utc>>,
     #[serde(default)]
     /// 是否是@全员消息
     pub mention_everyone: bool,
@@ -133,20 +121,10 @@ pub struct MessageRecieved {
     pub id: MessageId,
     /// 消息内容
     pub content: String,
-    #[serde(
-        serialize_with = "isoser",
-        deserialize_with = "isodeser",
-        default = "crate::utils::unix_time_zero"
-    )]
     /// 消息创建时间
-    pub timestamp: OffsetDateTime,
-    #[serde(
-        serialize_with = "isoser",
-        deserialize_with = "isodeser",
-        default = "crate::utils::unix_time_zero"
-    )]
+    pub timestamp: DateTime<Utc>,
     /// 消息编辑时间
-    pub edited_timestamp: OffsetDateTime,
+    pub edited_timestamp: DateTime<Utc>,
     #[serde(default)]
     /// 是否是@全员消息
     pub mention_everyone: bool,
@@ -290,7 +268,8 @@ pub enum MessageKeyboard {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(default)]
 pub struct MessageAudited {
     // #[serde_as(as = "DisplayFromStr")]
     /// 消息审核 id
@@ -304,12 +283,10 @@ pub struct MessageAudited {
     #[serde_as(as = "DisplayFromStr")]
     /// 子频道 id
     pub channel_id: u64,
-    #[serde(serialize_with = "isoser", deserialize_with = "isodeser")]
     /// 消息审核时间
-    pub audit_time: OffsetDateTime,
-    #[serde(serialize_with = "isoser", deserialize_with = "isodeser")]
+    pub audit_time: DateTime<Utc>,
     /// 消息创建时间
-    pub create_time: OffsetDateTime,
+    pub create_time: DateTime<Utc>,
     #[serde_as(as = "DisplayFromStr")]
     /// 子频道消息 seq，用于消息间的排序，seq 在同一子频道中按从先到后的顺序递增，不同的子频道之间消息无法排序
     pub seq_in_channel: u64,
