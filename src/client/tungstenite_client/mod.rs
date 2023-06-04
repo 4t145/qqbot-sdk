@@ -4,10 +4,14 @@ use tokio::{
 };
 use tungstenite::{protocol::frame::coding::CloseCode, WebSocket};
 
-use futures_util::{Future, SinkExt, StreamExt};
-use std::sync::{
-    atomic::{AtomicU32, AtomicU8, Ordering},
-    Arc,
+use futures_util::{Future, SinkExt, Stream, StreamExt};
+use std::{
+    error::Error,
+    fmt::Display,
+    sync::{
+        atomic::{AtomicU32, AtomicU8, Ordering},
+        Arc,
+    },
 };
 use tokio_tungstenite::{connect_async, WebSocketStream};
 
@@ -17,24 +21,7 @@ use crate::{
     websocket::{DownloadPayload, Event, Ready, Resume, UploadPayload},
 };
 
-use super::ConnectOption;
-
-pub type SeqEvent = (Event, u32);
-
-#[derive(Debug, Clone)]
-pub enum ClientEvent {
-    AtMessageCreate(Arc<MessageBotRecieved>),
-    MessageAuditPass(Arc<MessageAudited>),
-    MessageAuditReject(Arc<MessageAudited>),
-    MessgaeReactionAdd(Arc<MessageReaction>),
-    MessgaeReactionRemove(Arc<MessageReaction>),
-}
-
-#[derive(Debug, Clone)]
-pub struct SeqClientEvent {
-    pub seq: u32,
-    pub event: ClientEvent,
-}
+use super::{ClientEvent, ConnectConfig, Connection, ConnectionState};
 
 #[repr(transparent)]
 struct WsMessage(tungstenite::Message);
@@ -64,225 +51,130 @@ impl From<UploadPayload> for WsMessage {
     }
 }
 
-pub struct Connection {
-    /// websocket 连接
-    pub ws: WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
-    /// 鉴权成功时服务端发回的`Ready`数据
-    pub ready: Ready,
-    /// 心跳间隔，单位：毫秒
-    pub heartbeat_interval: u64,
+pub struct Connected {
+    pub(crate) session_id: String,
+    pub(crate) recv_task: JoinHandle<(bool, bool)>,
+    pub(crate) heartbeat_task: JoinHandle<()>,
+}
+pub enum TungsteniteConnectionState {
+    Connecting,
+    Connected(Connected),
+    Reconnecting,
+    Disconnected {
+        resume: Option<Resume>,
+        allow_identify: bool,
+    },
+    Guaranteed,
 }
 
-#[derive(Debug)]
-pub enum ConnectError {
-    /// 第一条消息不是hello
-    MissingHello,
-
-    /// 鉴权失败
-    AuthFailed,
-
-    /// tungstenite 错误
-    Ws(tungstenite::Error),
-}
-
-impl ConnectOption {
-    async fn auto_reconnect(
-        self,
-        event_broadcast_sender: broadcast::Sender<SeqEvent>,
-        shutdown_signal: Arc<Notify>,
-    ) {
-        let mut conn_option = self;
-        'connect: loop {
-            let mut retry_count = 0;
-            let retry_tolerance = conn_option.retry_times;
-            let mut interval = tokio::time::interval(conn_option.retry_interval);
-            match conn_option.connect().await {
-                Ok(conn) => {
-                    let mut cli = conn.luanch_client(event_broadcast_sender.clone()).await;
-                    while let Some(task) = cli.download_bus_task.take() {
-                        tokio::select! {
-                            will_reconn = task => {
-                                // 服务端关闭连接
-                                if let Ok(true) = will_reconn {
-                                    conn_option = cli.abort();
-                                    interval.tick().await;
-                                    continue 'connect;
-                                }
-                            }
-                            _ = shutdown_signal.notified() => {
-                                // 收到关闭信号
-                                cli.abort();
-                                break 'connect;
-                            }
-                        }
-                    }
-                    break 'connect;
-                }
-                Err(e) => {
-                    retry_count += 1;
-                    log::error!(
-                        "ws client reconnect error ({retry_count}/{retry_tolerance}): {:?}",
-                        e
-                    );
-                    if retry_count > retry_tolerance {
-                        log::error!("ws client reconnect failed");
-                        break 'connect;
-                    }
-                }
-            }
-            interval.tick().await;
+impl Into<ConnectionState> for &TungsteniteConnectionState {
+    fn into(self) -> ConnectionState {
+        match self {
+            TungsteniteConnectionState::Connecting => ConnectionState::Connecting,
+            TungsteniteConnectionState::Connected { .. } => ConnectionState::Connected,
+            TungsteniteConnectionState::Reconnecting => ConnectionState::Reconnecting,
+            TungsteniteConnectionState::Disconnected { .. } => ConnectionState::Disconnected,
+            TungsteniteConnectionState::Guaranteed => ConnectionState::Guaranteed,
         }
     }
+}
 
-    async fn connect(&self) -> Result<ConnectionTokio, ConnectError> {
-        use ConnectError::*;
-        let (mut ws, _) = connect_async(&self.wss_gateway).await.map_err(Ws)?;
-
-        // 1. 连接到 Gateway
-        log::info!("Connected to gateway");
-        let hello: Option<DownloadPayload> =
-            WsMessage(ws.next().await.unwrap().map_err(Ws)?).into();
-
-        let heartbeat_interval = match hello {
-            Some(DownloadPayload::Hello { heartbeat_interval }) => heartbeat_interval,
-            _ => return Err(ConnectError::MissingHello),
-        };
-        log::info!("Heartbeat interval: {:?}", heartbeat_interval);
-
-        // 2. 鉴权连接
-        log::info!("Identifying");
-        let token;
-        match &self.connect_type {
-            ConnectType::New(identify) => {
-                token = identify.token.clone();
-                let message = WsMessage::from(UploadPayload::Identify(identify.clone())).0;
-                log::debug!("Sending identify: {:?}", &message);
-                ws.send(message).await.map_err(Ws)?;
-            }
-            ConnectType::Reconnect(resume) => {
-                token = resume.token.clone();
-                ws.send(WsMessage::from(UploadPayload::Resume(resume.clone())).0)
-                    .await
-                    .map_err(Ws)?;
-            }
-        }
-
-        // 3. 发送心跳
-        log::info!("Sending heartbeat");
-        let resp: Option<DownloadPayload> = WsMessage(ws.next().await.unwrap().map_err(Ws)?).into();
-
-        let ready = *match resp {
-            Some(DownloadPayload::Dispatch { event, seq: _ }) => {
-                log::info!("ws client init recieve event: {:?}", event);
-                match *event {
-                    Event::Ready(ready) => {
-                        ws.send(WsMessage::from(UploadPayload::Heartbeat(None)).0)
-                            .await
-                            .map_err(Ws)?;
-                        ready
-                    }
-                    _ => return Err(ConnectError::AuthFailed),
+pub struct TungsteniteConnection {
+    state: TungsteniteConnectionState,
+    config: ConnectConfig,
+    event_sender: broadcast::Sender<ClientEvent>,
+    last_sequence: Arc<AtomicU32>,
+}
+type WsRx = futures_util::stream::SplitStream<
+    WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+>;
+type WsTx = futures_util::stream::SplitSink<
+    WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    tokio_tungstenite::tungstenite::Message,
+>;
+type Ws = WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+impl TungsteniteConnection {
+    fn start_loop(
+        &self,
+        heartbeat_interval: u64,
+        ws: Ws,
+    ) -> (JoinHandle<()>, JoinHandle<(bool, bool)>) {
+        let (tx, rx) = ws.split();
+        let heartbeat_task = self.hb_loop(heartbeat_interval, tx);
+        let recv_task = self.recv_loop(rx);
+        (heartbeat_task, recv_task)
+    }
+    fn hb_loop(&self, heartbeat_interval: u64, mut tx: WsTx) -> JoinHandle<()> {
+        let last_seq = self.last_sequence.clone();
+        let heartbeat_interval = tokio::time::Duration::from_millis(heartbeat_interval);
+        // spawn 心跳task
+        tokio::spawn(async move {
+            use tokio::time::*;
+            let mut interval = interval(heartbeat_interval);
+            loop {
+                interval.tick().await;
+                let latest_seq = last_seq.load(Ordering::SeqCst);
+                let message = WsMessage::from(UploadPayload::Heartbeat(Some(latest_seq))).0;
+                if let Err(e) = tx.send(message).await {
+                    log::error!("send heartbeat failed: {e}");
                 }
             }
-            e => {
-                log::info!("fail to get response {e:?}");
-                return Err(ConnectError::AuthFailed);
-            }
-        };
-
-        Ok(ConnectionTokio {
-            ws,
-            ready,
-            heartbeat_interval,
-            token,
-            gateway: self.wss_gateway.clone(),
-            option: self.clone(),
         })
     }
-    pub fn run(
-        self,
-        event_broadcast_sender: broadcast::Sender<SeqEvent>,
-        shutdown_signal: impl Future<Output = ()> + Send + 'static,
-    ) -> JoinHandle<()> {
-        let shutdown_notifier = Arc::new(Notify::new());
-        let shutdown_notifiee = shutdown_notifier.clone();
-        let reconnect_task =
-            tokio::spawn(self.auto_reconnect(event_broadcast_sender, shutdown_notifiee));
-        tokio::spawn(async move {
-            shutdown_signal.await;
-            shutdown_notifier.notify_one();
-        });
-        reconnect_task
-    }
-
-    pub fn run_with_ctrl_c(
-        self,
-        event_broadcast_sender: broadcast::Sender<SeqEvent>,
-    ) -> JoinHandle<()> {
-        let shutdown_signal = async {
-            tokio::signal::ctrl_c()
-                .await
-                .expect("failed to get CTRL+C signal");
-        };
-        self.run(event_broadcast_sender, shutdown_signal)
-    }
-}
-
-pub struct ConnectionTokio {
-    /// websocket 连接
-    pub ws: WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
-    /// 鉴权成功时服务端发回的`Ready`数据
-    pub ready: Ready,
-    /// 心跳间隔，单位：毫秒
-    pub heartbeat_interval: u64,
-    /// token
-    pub token: String,
-    /// gateway
-    pub gateway: String,
-    pub option: ConnectOption,
-}
-
-impl ConnectionTokio {
-    pub async fn luanch_client(
-        self,
-        event_broadcast_sender: broadcast::Sender<SeqEvent>,
-    ) -> WsClient {
-        log::info!("ws client starting");
-        let latest_seq_raw = Arc::new(AtomicU32::new(0));
-        let (mut tx, mut rx) = self.ws.split();
-
-        // 收消息总线
-        let latest_seq = latest_seq_raw.clone();
-        let hb_counter_dl = Arc::new(AtomicU8::new(0));
-        let hb_counter_hb = hb_counter_dl.clone();
-        let download_bus = async move {
-            loop {
-                match rx.next().await {
-                    None => {
-                        // 服务端关闭连接
-                        break;
-                    }
-                    Some(Err(e)) => {
+    fn recv_loop(&self, mut rx: WsRx) -> JoinHandle<(bool, bool)> {
+        let last_seq = self.last_sequence.clone();
+        let event_tx = self.event_sender.clone();
+        let recv_jh: JoinHandle<(bool, bool)> = tokio::spawn(async move {
+            while let Some(maybe_message) = rx.next().await {
+                match maybe_message {
+                    Err(e) => {
                         // 服务端关闭连接
                         log::error!("ws client recieve error: {:?}", e);
                         break;
                     }
-                    Some(Ok(message)) => {
+                    Ok(message) => {
                         if let tokio_tungstenite::tungstenite::Message::Close(cf) = message {
                             if let Some(cf) = cf {
                                 log::debug!("ws client recieve close frame: {:?}", cf);
                                 if let CloseCode::Library(code) = cf.code {
-                                    match code {
-                                        4009 | 4900..=4913 => {
-                                            log::debug!("ws will retry connect with code: {code}");
-                                            return true;
+                                    macro_rules! match_close_code {
+                                        ($val:expr => {
+                                            $($code:pat => ($can_resume:expr, $can_identify:expr, $message:literal),)*
+                                        }) => {
+                                            match $val {
+                                                $($code => {
+                                                    log::error!("ws error, {code}:{message}", code=stringify!($code), message=$message);
+                                                    return ($can_resume, $can_identify)
+                                                }),*
+                                                _ => {
+                                                    log::error!("ws error, {code}:{message}", code=stringify!($val), message="未知错误");
+                                                    return (false, false)
+                                                }
+                                            }
+                                        };
+                                    }
+                                    match_close_code! {
+                                        code => {
+                                            4001=>(false, false,"无效的 opcode"),
+                                            4002=>(false, false,"无效的 payload"),
+                                            4006=>(false, true,"无效的 session"),
+                                            4007=>(false, true,  "seq 错误"),
+                                            4008=>(true,  true,"发送 payload 过快，请重新连接，并遵守连接后返回的频控信息"),
+                                            4009=>(true,  true,"连接过期，请重连并执行 resume 进行重新连接"),
+                                            4010=>(false, false,"无效的 shard"),
+                                            4011=>(false, false,"连接需要处理的 guild 过多，请进行合理的分片"),
+                                            4012=>(false, false,"无效的 version")  ,
+                                            4013=>(false, false,"无效的 intent")  ,
+                                            4014=>(false, false,"无效的加密模式")  ,
+                                            4900..=4913=>(false, true,"内部错误，请重连") ,
+                                            4914=>(false, false,"机器人已下架,只允许连接沙箱环境,请断开连接,检验当前连接环境"),
+                                            4915=>(false, false,"机器人已封禁,不允许连接,请断开连接,申请解封后再连接"),
                                         }
-                                        _ => {}
                                     }
                                 }
                             }
                             // 服务端关闭连接
-                            return false;
+                            return (false, true);
                         }
                         let msg_bdg = message.clone();
                         if let Option::<DownloadPayload>::Some(download) = WsMessage(message).into()
@@ -290,12 +182,16 @@ impl ConnectionTokio {
                             match download {
                                 DownloadPayload::Dispatch { event, seq } => {
                                     log::debug!("ws client recieve event: {:?}", event);
-                                    latest_seq.store(seq, Ordering::Relaxed);
-                                    // 存活确认
-                                    hb_counter_dl.store(0, Ordering::SeqCst);
+                                    last_seq.store(seq, Ordering::Relaxed);
+                                    let Ok(client_event): Result<ClientEvent, ()> = (*event).try_into() else {
+                                        continue;
+                                    };
                                     // 分发事件
-                                    event_broadcast_sender
-                                        .send((*event, seq))
+                                    event_tx
+                                        .send(client_event)
+                                        .map_err(|e| {
+                                            log::error!("ws client send event failed: {e}")
+                                        })
                                         .unwrap_or_default();
                                 }
                                 DownloadPayload::Heartbeat => {
@@ -314,8 +210,7 @@ impl ConnectionTokio {
                                     // 建立连接后应该不能收到hello消息
                                 }
                                 DownloadPayload::HeartbeatAck => {
-                                    // 收到服务端心跳，把应答缺失置零
-                                    hb_counter_dl.store(0, Ordering::SeqCst);
+                                    // 收到服务端心跳
                                 }
                             }
                         } else {
@@ -325,68 +220,233 @@ impl ConnectionTokio {
                 }
             }
             log::debug!("ws client download bus exit");
-            false
+            (false, false)
+        });
+        recv_jh
+    }
+    async fn prepare_ws(&self) -> Result<(Ws, u64), TungsteniteConnectionError> {
+        let (mut ws, _) = connect_async(&self.config.wss_gateway).await?;
+        // 1. 连接到 Gateway
+        log::info!("Connected to gateway");
+        let Some(first_ws_message) = ws.next().await else {
+            // 这其实不太可能发生
+            // 如果发生了，可能ws连接已经被关闭
+            return Err(TungsteniteConnectionError::WsStreamClosed);
         };
 
-        // spawn 心跳task
-        let latest_seq = latest_seq_raw.clone();
-        let hb_interval = self.heartbeat_interval;
-        let heartbeat = async move {
-            use tokio::time::*;
-            sleep(Duration::from_millis(hb_interval)).await;
-            tx.send(
-                WsMessage::from(UploadPayload::Heartbeat(Some(
-                    latest_seq.load(Ordering::Relaxed),
-                )))
-                .0,
-            )
-            .await
-            .unwrap_or_default();
-            hb_counter_hb.fetch_add(1, Ordering::SeqCst);
+        let Some(DownloadPayload::Hello { heartbeat_interval }): Option<DownloadPayload> = WsMessage(first_ws_message?).into() else {
+            return Err(TungsteniteConnectionError::MissingHello);
         };
 
-        let download_bus_task = tokio::spawn(download_bus);
-        let heartbeat_task = tokio::spawn(heartbeat);
-        log::info!("ws client started");
-
-        WsClient {
-            download_bus_task: Some(download_bus_task),
-            heartbeat_task,
-            latest_seq: latest_seq_raw,
-            // hb_ack_missed: hb_ack_missed_raw,
-            session_id: self.ready.session_id,
-            option: self.option,
-        }
+        log::info!("Heartbeat interval: {:?}", heartbeat_interval);
+        Ok((ws, heartbeat_interval))
     }
 }
+#[async_trait::async_trait]
+impl Connection for TungsteniteConnection {
+    type Error = TungsteniteConnectionError;
+    fn new(config: ConnectConfig, event_sender: broadcast::Sender<ClientEvent>) -> Self {
+        Self {
+            state: TungsteniteConnectionState::Disconnected {
+                resume: None,
+                allow_identify: true,
+            },
+            config,
+            event_sender,
+            last_sequence: Arc::new(AtomicU32::new(0)),
+        }
+    }
+
+    fn get_state(&self) -> ConnectionState {
+        (&self.state).into()
+    }
+
+    fn get_config(&self) -> &ConnectConfig {
+        &self.config
+    }
+
+    fn confict_state_err(state: ConnectionState, expected: ConnectionState) -> Self::Error {
+        TungsteniteConnectionError::StateConfict {
+            current: state,
+            expected,
+        }
+    }
+
+    async fn connect_inner(&mut self) -> Result<(), Self::Error> {
+        self.state = TungsteniteConnectionState::Connecting;
+        // 1. 连接到 Gateway
+        let (mut ws, heartbeat_interval) = self.prepare_ws().await?;
+
+        // 2. 鉴权连接
+        log::info!("Identifying");
+        let identify = self.config.identify.clone();
+        let message = WsMessage::from(UploadPayload::Identify(identify)).0;
+        log::debug!("Sending identify: {:?}", &message);
+        ws.send(message).await?;
+
+        // 3. 发送心跳
+        log::info!("Sending heartbeat");
+        let resp_message = ws
+            .next()
+            .await
+            .ok_or(TungsteniteConnectionError::WsStreamClosed)??;
+        log::debug!("get response message: {resp_message}");
+
+        let Some(resp_pld): Option<DownloadPayload> = WsMessage(resp_message).into() else {
+            log::error!("get invalid response message");
+            return Err(TungsteniteConnectionError::AuthFailed);
+        };
+
+        let DownloadPayload::Dispatch { event, seq } = resp_pld else {
+            log::error!("get unexpected response payload: {resp_pld:?}");
+            return Err(TungsteniteConnectionError::AuthFailed);
+        };
+
+        let Event::Ready(ready) = *event else {
+            log::error!("get unexpected event: {event:?}");
+            return Err(TungsteniteConnectionError::AuthFailed);
+        };
+
+        let last_seq_raw = self.last_sequence.clone();
+        last_seq_raw.store(seq, Ordering::SeqCst);
+
+        let (heartbeat_jh, recv_jh) = self.start_loop(heartbeat_interval, ws);
+
+        self.state = TungsteniteConnectionState::Connected(Connected {
+            session_id: ready.session_id.to_string(),
+            recv_task: recv_jh,
+            heartbeat_task: heartbeat_jh,
+        });
+        Ok(())
+    }
+
+    async fn reconnect_inner(&mut self) -> Result<(), Self::Error> {
+        let mut state = TungsteniteConnectionState::Reconnecting;
+        std::mem::swap(&mut state, &mut self.state);
+        let TungsteniteConnectionState::Disconnected { resume, allow_identify } = state else {
+            return Err(Self::confict_state_err((&state).into(), ConnectionState::Disconnected));
+        };
+        let (mut ws, heartbeat_interval) = self.prepare_ws().await?;
+        if let Some(resume) = resume {
+            log::info!("Resuming");
+            let message = WsMessage::from(UploadPayload::Resume(resume.clone())).0;
+            log::debug!("Sending identify: {:?}", &message);
+            ws.send(message).await?;
+            let (heartbeat_task, recv_task) = self.start_loop(heartbeat_interval, ws);
+            self.state = TungsteniteConnectionState::Connected(Connected {
+                session_id: resume.session_id.to_string(),
+                recv_task,
+                heartbeat_task,
+            });
+            Ok(())
+        } else if allow_identify {
+            self.connect_inner().await
+        } else {
+            log::error!("can not reconnect");
+            Err(TungsteniteConnectionError::CantReconnect)
+        }
+    }
+
+    async fn wait_disconect_inner(&mut self) -> Result<(), Self::Error> {
+        let mut retry_interval = tokio::time::interval(self.config.retry_interval);
+        let mut retry_times = 0;
+        let retry_max_times = self.config.retry_times;
+        loop {
+            let mut state = TungsteniteConnectionState::Guaranteed;
+            std::mem::swap(&mut state, &mut self.state);
+            let TungsteniteConnectionState::Connected(Connected { session_id, recv_task, heartbeat_task }) = state else {
+                return Err(Self::confict_state_err((&state).into(), ConnectionState::Disconnected));
+            };
+            match recv_task.await {
+                Ok((resume, indentify)) => {
+                    self.state = TungsteniteConnectionState::Disconnected {
+                        resume: resume.then_some(Resume {
+                            token: self.config.identify.token.clone(),
+                            session_id,
+                            seq: self.last_sequence.load(Ordering::SeqCst),
+                        }),
+                        allow_identify: indentify,
+                    };
+                    'retry: loop {
+                        match self.reconnect_inner().await {
+                            Ok(()) => {
+                                log::info!("connect success");
+                                break 'retry;
+                            }
+                            Err(e) => {
+                                retry_times += 1;
+                                log::error!("connect failed({retry_times}/{retry_max_times}): {:?}", e);
+                                if retry_times >= retry_max_times {
+                                    log::error!("reconnect failed: retry times exceed");
+                                    return Err(e);
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("recv_task join error: {:?}", e);
+                    return Err(Self::Error::Ws(tungstenite::Error::ConnectionClosed));
+                }
+            }
+            retry_interval.tick().await;
+        }
+
+    }
+}
+
+// pub struct Connection {
+//     /// websocket 连接
+//     pub ws: WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
+//     /// 鉴权成功时服务端发回的`Ready`数据
+//     pub ready: Ready,
+//     /// 心跳间隔，单位：毫秒
+//     pub heartbeat_interval: u64,
+// }
 
 #[derive(Debug)]
-pub struct WsClient {
-    download_bus_task: Option<JoinHandle<bool>>,
-    heartbeat_task: JoinHandle<()>,
-    latest_seq: Arc<AtomicU32>,
-    // hb_ack_missed: Arc<AtomicU8>,
-    option: ConnectOption,
-    pub session_id: String,
+pub enum TungsteniteConnectionError {
+    CantReconnect,
+    /// websocket连接状态错误
+    StateConfict {
+        current: ConnectionState,
+        expected: ConnectionState,
+    },
+    /// websocket连接已关闭
+    WsStreamClosed,
+
+    /// 第一条消息不是hello
+    MissingHello,
+
+    /// 鉴权失败
+    AuthFailed,
+
+    /// tungstenite 错误
+    Ws(tungstenite::Error),
 }
 
-impl WsClient {
-    #[inline]
-    /// 最近序列号
-    fn latest_seq(&self) -> u32 {
-        self.latest_seq.load(Ordering::Relaxed)
+impl From<tungstenite::Error> for TungsteniteConnectionError {
+    fn from(err: tungstenite::Error) -> Self {
+        Self::Ws(err)
     }
+}
 
-    /// 宕机，返回`ConnectOption`，可以用来进行重连
-    fn abort(self) -> ConnectOption {
-        self.heartbeat_task.abort();
-        ConnectOption {
-            connect_type: ConnectType::Reconnect(Resume {
-                seq: self.latest_seq(),
-                token: self.option.connect_type.get_token().to_owned(),
-                session_id: self.session_id,
-            }),
-            ..self.option
+impl Display for TungsteniteConnectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TungsteniteConnectionError::StateConfict { current, expected } => write!(
+                f,
+                "Conflict state: expect: {}, currunt: {}",
+                expected, current
+            ),
+            TungsteniteConnectionError::WsStreamClosed => {
+                write!(f, "Websocket stream already closed")
+            }
+            TungsteniteConnectionError::MissingHello => write!(f, "Missing hello"),
+            TungsteniteConnectionError::AuthFailed => write!(f, "Auth failed"),
+            TungsteniteConnectionError::Ws(err) => write!(f, "Tungstenite error: {}", err),
+            TungsteniteConnectionError::CantReconnect => write!(f, "Can't reconnect"),
         }
     }
 }
+impl Error for TungsteniteConnectionError {}

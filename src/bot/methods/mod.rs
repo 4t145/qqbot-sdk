@@ -10,7 +10,7 @@ use crate::{
         websocket::Gateway,
         Authority,
     },
-    client::{reqwest_client::ApiClient, ConnectOption, ConnectType},
+    client::{reqwest_client::ApiClient, ConnectConfig, ConnectType},
     model::{Guild, MessageSend, User},
     websocket::{Event, Identify},
 };

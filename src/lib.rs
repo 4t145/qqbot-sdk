@@ -5,3 +5,4 @@ pub mod model;
 pub mod statics;
 pub(crate) mod utils;
 pub mod websocket;
+mod error;

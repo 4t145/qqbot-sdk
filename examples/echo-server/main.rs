@@ -3,8 +3,7 @@ use std::sync::Arc;
 use qqbot_sdk::{
     api::Authority,
     bot::{Bot, BotBuilder, BotError, Handler, MessageBuilder},
-    client::tungstenite_client::SeqEvent,
-    websocket::Intends,
+    websocket::Intends, client::ClientEvent,
 };
 
 #[tokio::main]
@@ -17,10 +16,10 @@ async fn main() {
 pub struct EchoHandler;
 
 impl Handler for EchoHandler {
-    fn handle(&self, event: SeqEvent, ctx: Arc<Bot>) -> Result<(), BotError> {
+    fn handle(&self, event: ClientEvent, ctx: Arc<Bot>) -> Result<(), BotError> {
         tokio::spawn(async move {
-            match event.0 {
-                qqbot_sdk::websocket::Event::AtMessageCreate(m) => {
+            match event {
+                ClientEvent::AtMessageCreate(m) => {
                     let channel_id = m.channel_id;
                     ctx.post_message(
                         channel_id,

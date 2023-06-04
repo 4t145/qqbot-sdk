@@ -10,7 +10,10 @@ use crate::{
         websocket::{Gateway, GatewayBot},
         Authority,
     },
-    client::{reqwest_client::ApiClient, ConnectOption, ConnectType},
+    client::{
+        reqwest_client::ApiClient, tungstenite_client::TungsteniteConnection, ConnectConfig,
+        ConnectType, Connection, ClientEvent,
+    },
     model::Guild,
     websocket::{Event, Identify},
 };
@@ -30,7 +33,7 @@ pub use self::handler::Handler;
 #[derive(Debug, Clone)]
 pub struct Bot {
     api_client: Arc<ApiClient>,
-    ws_event_tx: Arc<tokio::sync::broadcast::Sender<(Event, u32)>>,
+    event_tx: Arc<tokio::sync::broadcast::Sender<ClientEvent>>,
     cache: BotCache,
     handlers: Arc<RwLock<HashMap<String, JoinHandle<()>>>>, // dispacher: Arc<RwLock<EventDispatcher>>,
 }
@@ -69,7 +72,7 @@ pub struct BotBuilder<'a> {
 pub enum BotBuildError {
     NoAuthority,
     ApiError(reqwest::Error),
-    WsConnectError(crate::client::tungstenite_client::ConnectError),
+    WsConnectError(crate::client::tungstenite_client::TungsteniteConnectionError),
 }
 
 impl<'a> BotBuilder<'a> {
@@ -129,35 +132,41 @@ impl<'a> BotBuilder<'a> {
                     properties: std::collections::HashMap::new(),
                 };
                 // ws连接设置
-                let connect_option = ConnectOption {
+                let connect_option = ConnectConfig {
                     wss_gateway: url.clone(),
-                    connect_type: ConnectType::New(identify),
                     retry_times: 5,
                     retry_interval: tokio::time::Duration::from_secs(30),
+                    identify,
                 };
-                let _handle = connect_option.run_with_ctrl_c(event_tx.clone());
+                let mut conn = TungsteniteConnection::new(connect_option, event_tx.clone());
+                conn.connect()
+                    .await
+                    .map_err(BotBuildError::WsConnectError)?;
             }
         } else {
             // standalone
             let identify = Identify {
                 token,
                 intents: self.intents,
-                shard: Some([0,1]),
+                shard: Some([0, 1]),
                 properties: std::collections::HashMap::new(),
             };
             // ws连接设置
-            let connect_option = ConnectOption {
-                wss_gateway: url,
-                connect_type: ConnectType::New(identify),
+            let connect_option = ConnectConfig {
+                wss_gateway: url.clone(),
                 retry_times: 5,
                 retry_interval: tokio::time::Duration::from_secs(30),
+                identify,
             };
-            let _handle = connect_option.run_with_ctrl_c(event_tx.clone());
+            let mut conn = TungsteniteConnection::new(connect_option, event_tx.clone());
+            conn.connect()
+                .await
+                .map_err(BotBuildError::WsConnectError)?;
         }
 
         Ok(Bot {
             api_client: Arc::new(api_client),
-            ws_event_tx: Arc::new(event_tx),
+            event_tx: Arc::new(event_tx),
             cache: BotCache::default(),
             handlers: Arc::new(RwLock::new(HashMap::new())),
             // dispacher: Arc::new(RwLock::new(EventDispatcher::default())),
@@ -173,8 +182,8 @@ pub enum BotError {
 
 /// Handle Events
 impl Bot {
-    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<(Event, u32)> {
-        self.ws_event_tx.subscribe()
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<ClientEvent> {
+        self.event_tx.subscribe()
     }
     pub async fn register_boxed_handler(&self, name: String, handler: Box<dyn Handler>) {
         let mut rx = self.subscribe();
