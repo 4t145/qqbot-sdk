@@ -17,7 +17,6 @@ impl Api for Gateway {
     const PATH: &'static str = "/gateway";
 }
 
-
 pub struct GatewayBot;
 
 #[derive(Deserialize, Debug, Clone)]

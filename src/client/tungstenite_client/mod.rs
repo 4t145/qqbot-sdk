@@ -1,25 +1,18 @@
-use tokio::{
-    sync::{broadcast, Notify},
-    task::JoinHandle,
-};
-use tungstenite::{protocol::frame::coding::CloseCode, WebSocket};
+use tokio::{sync::broadcast, task::JoinHandle};
+use tungstenite::protocol::frame::coding::CloseCode;
 
-use futures_util::{Future, SinkExt, Stream, StreamExt};
+use futures_util::{SinkExt, StreamExt};
 use std::{
     error::Error,
     fmt::Display,
     sync::{
-        atomic::{AtomicU32, AtomicU8, Ordering},
+        atomic::{AtomicU32, Ordering},
         Arc,
     },
 };
 use tokio_tungstenite::{connect_async, WebSocketStream};
 
-use crate::{
-    client::ConnectType,
-    model::{MessageAudited, MessageBotRecieved, MessageReaction},
-    websocket::{DownloadPayload, Event, Ready, Resume, UploadPayload},
-};
+use crate::websocket::{DownloadPayload, Event, Resume, UploadPayload};
 
 use super::{ClientEvent, ConnectConfig, Connection, ConnectionState};
 
@@ -65,16 +58,18 @@ pub enum TungsteniteConnectionState {
         allow_identify: bool,
     },
     Guaranteed,
+    Zombie,
 }
 
-impl Into<ConnectionState> for &TungsteniteConnectionState {
-    fn into(self) -> ConnectionState {
-        match self {
+impl From<&TungsteniteConnectionState> for ConnectionState {
+    fn from(val: &TungsteniteConnectionState) -> Self {
+        match val {
             TungsteniteConnectionState::Connecting => ConnectionState::Connecting,
             TungsteniteConnectionState::Connected { .. } => ConnectionState::Connected,
             TungsteniteConnectionState::Reconnecting => ConnectionState::Reconnecting,
             TungsteniteConnectionState::Disconnected { .. } => ConnectionState::Disconnected,
             TungsteniteConnectionState::Guaranteed => ConnectionState::Guaranteed,
+            TungsteniteConnectionState::Zombie => ConnectionState::Zombie,
         }
     }
 }
@@ -347,7 +342,10 @@ impl Connection for TungsteniteConnection {
         }
     }
 
-    async fn wait_disconect_inner(&mut self) -> Result<(), Self::Error> {
+    async fn wait_disconect_inner(
+        &mut self,
+        signal: Arc<tokio::sync::Notify>,
+    ) -> Result<(), Self::Error> {
         let mut retry_interval = tokio::time::interval(self.config.retry_interval);
         let mut retry_times = 0;
         let retry_max_times = self.config.retry_times;
@@ -357,7 +355,17 @@ impl Connection for TungsteniteConnection {
             let TungsteniteConnectionState::Connected(Connected { session_id, recv_task, heartbeat_task }) = state else {
                 return Err(Self::confict_state_err((&state).into(), ConnectionState::Disconnected));
             };
-            match recv_task.await {
+            let recv_task_result = tokio::select! {
+                _ = signal.notified() => {
+                    log::info!("disconnect signal received");
+                    return Ok(());
+                }
+                recv_task_result = recv_task => {
+                    heartbeat_task.abort();
+                    recv_task_result
+                }
+            };
+            match recv_task_result {
                 Ok((resume, indentify)) => {
                     self.state = TungsteniteConnectionState::Disconnected {
                         resume: resume.then_some(Resume {
@@ -375,7 +383,10 @@ impl Connection for TungsteniteConnection {
                             }
                             Err(e) => {
                                 retry_times += 1;
-                                log::error!("connect failed({retry_times}/{retry_max_times}): {:?}", e);
+                                log::error!(
+                                    "connect failed({retry_times}/{retry_max_times}): {:?}",
+                                    e
+                                );
                                 if retry_times >= retry_max_times {
                                     log::error!("reconnect failed: retry times exceed");
                                     return Err(e);
@@ -391,7 +402,6 @@ impl Connection for TungsteniteConnection {
             }
             retry_interval.tick().await;
         }
-
     }
 }
 

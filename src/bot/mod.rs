@@ -10,16 +10,20 @@ use crate::{
         websocket::{Gateway, GatewayBot},
         Authority,
     },
-    client::{
-        reqwest_client::ApiClient, tungstenite_client::TungsteniteConnection, ConnectConfig,
-        ConnectType, Connection, ClientEvent,
-    },
+    client::{reqwest_client::ApiClient, ClientEvent, ConnectConfig, Connection},
     model::Guild,
-    websocket::{Event, Identify},
+    websocket::Identify,
 };
+use futures_util::Future;
 pub use message::*;
 pub use shard::Shards;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    ops::Deref,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 use tokio::{sync::RwLock, task::JoinHandle};
 pub use user::*;
 
@@ -30,12 +34,58 @@ pub use self::handler::Handler;
 /// # Bot
 /// ## Clone
 /// 可以随意克隆bot，内部全部有arc包裹, 且不提供可变性
-#[derive(Debug, Clone)]
-pub struct Bot {
-    api_client: Arc<ApiClient>,
-    event_tx: Arc<tokio::sync::broadcast::Sender<ClientEvent>>,
+#[derive(Debug)]
+pub struct BotInner<
+    C: crate::client::Connection = crate::client::tungstenite_client::TungsteniteConnection,
+> {
+    api_client: ApiClient,
+    event_tx: tokio::sync::broadcast::Sender<ClientEvent>,
     cache: BotCache,
-    handlers: Arc<RwLock<HashMap<String, JoinHandle<()>>>>, // dispacher: Arc<RwLock<EventDispatcher>>,
+    handlers: RwLock<HashMap<String, JoinHandle<()>>>, // dispacher: Arc<RwLock<EventDispatcher>>,
+    conn_tasks: Vec<JoinHandle<Result<(), C::Error>>>,
+}
+
+impl<C: Connection> BotInner<C> {
+    fn get_conn_task_status(&self) -> Vec<bool> {
+        self.conn_tasks.iter().map(|h| !h.is_finished()).collect()
+    }
+    fn is_conn_health(&self) -> bool {
+        if self.conn_tasks.is_empty() {
+            return false;
+        }
+        self.get_conn_task_status().iter().all(|&b| b)
+    }
+}
+
+impl<C: Connection> Drop for BotInner<C> {
+    fn drop(&mut self) {
+        tokio::task::block_in_place(|| {
+            log::debug!("Bot is dropping, aborting all tasks");
+            for (_, h) in self.handlers.blocking_write().drain() {
+                h.abort();
+            }
+            for h in &self.conn_tasks {
+                h.abort()
+            }
+        });
+    }
+}
+
+#[derive(Debug)]
+pub struct Bot<
+    C: crate::client::Connection = crate::client::tungstenite_client::TungsteniteConnection,
+>(Arc<BotInner<C>>);
+
+impl Clone for Bot {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+impl Deref for Bot {
+    type Target = BotInner;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -97,7 +147,8 @@ impl<'a> BotBuilder<'a> {
     pub fn auto_shard(self, auto_shard: bool) -> Self {
         Self { auto_shard, ..self }
     }
-    pub async fn build(mut self) -> Result<Bot, BotBuildError> {
+
+    pub async fn start<C: Connection + Send>(mut self) -> Result<Bot<C>, BotBuildError> {
         let auth = self.authority.ok_or(BotBuildError::NoAuthority)?;
         let token = auth.token();
         let api_client = ApiClient::new(auth);
@@ -121,6 +172,7 @@ impl<'a> BotBuilder<'a> {
         };
         log::info!("ws gate url: {}", url);
         let (event_tx, _event_rx) = tokio::sync::broadcast::channel(128);
+        let mut task_handles = vec![];
         if let Some(shards) = self.shards {
             let total = shards.total;
             for shard_idx in shards.using_shards {
@@ -138,10 +190,8 @@ impl<'a> BotBuilder<'a> {
                     retry_interval: tokio::time::Duration::from_secs(30),
                     identify,
                 };
-                let mut conn = TungsteniteConnection::new(connect_option, event_tx.clone());
-                conn.connect()
-                    .await
-                    .map_err(BotBuildError::WsConnectError)?;
+                let conn_task = connect_option.start_connection_with_ctrl_c::<C>(event_tx.clone());
+                task_handles.push(conn_task);
             }
         } else {
             // standalone
@@ -153,24 +203,22 @@ impl<'a> BotBuilder<'a> {
             };
             // ws连接设置
             let connect_option = ConnectConfig {
-                wss_gateway: url.clone(),
+                wss_gateway: url,
                 retry_times: 5,
                 retry_interval: tokio::time::Duration::from_secs(30),
                 identify,
             };
-            let mut conn = TungsteniteConnection::new(connect_option, event_tx.clone());
-            conn.connect()
-                .await
-                .map_err(BotBuildError::WsConnectError)?;
+            let _conn_task = connect_option.start_connection_with_ctrl_c::<C>(event_tx.clone());
+            task_handles.push(_conn_task);
         }
 
-        Ok(Bot {
-            api_client: Arc::new(api_client),
-            event_tx: Arc::new(event_tx),
+        Ok(Bot(Arc::new(BotInner {
+            api_client,
+            event_tx,
             cache: BotCache::default(),
-            handlers: Arc::new(RwLock::new(HashMap::new())),
-            // dispacher: Arc::new(RwLock::new(EventDispatcher::default())),
-        })
+            handlers: RwLock::new(HashMap::new()),
+            conn_tasks: task_handles,
+        })))
     }
 }
 
@@ -180,35 +228,24 @@ pub enum BotError {
     BadRequest(crate::api::ResponseFail),
 }
 
-/// Handle Events
+/// error and recover
 impl Bot {
-    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<ClientEvent> {
-        self.event_tx.subscribe()
+    pub fn is_conn_health(&self) -> bool {
+        self.0.is_conn_health()
     }
-    pub async fn register_boxed_handler(&self, name: String, handler: Box<dyn Handler>) {
-        let mut rx = self.subscribe();
-        let ctx = Arc::new(self.clone());
-        let task = tokio::spawn(async move {
-            while let Ok(seq_evt) = rx.recv().await {
-                let result = handler.handle(seq_evt, ctx.clone());
-                drop(result);
-            }
-        });
-        if let Some(jh) = self.handlers.write().await.insert(name, task) {
-            jh.abort();
-        }
-    }
-    pub async fn register_handler<H: Handler + 'static>(
-        &self,
-        name: impl Into<String>,
-        handler: H,
-    ) {
-        self.register_boxed_handler(name.into(), Box::new(handler))
-            .await;
-    }
-    pub async fn unregister_handler(&self, name: &str) {
-        if let Some(jh) = self.handlers.write().await.remove(name) {
-            jh.abort();
+}
+
+impl Future for Bot {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let health = self.is_conn_health();
+        cx.waker().wake_by_ref();
+
+        dbg!("polling bot", health);
+        if health {
+            Poll::Pending
+        } else {
+            Poll::Ready(())
         }
     }
 }

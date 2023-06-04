@@ -1,8 +1,8 @@
-mod upload;
 mod download;
-use serde::{Serialize, Deserialize};
-pub use upload::*;
+mod upload;
 pub use download::*;
+use serde::{Deserialize, Serialize};
+pub use upload::*;
 
 use super::Opcode;
 
@@ -17,4 +17,3 @@ pub struct Payload {
     #[serde(rename = "d", skip_serializing_if = "Option::is_none")]
     pub(crate) data: Option<serde_json::Value>,
 }
-

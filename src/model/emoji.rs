@@ -1,4 +1,4 @@
-use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 mod raw_emoji;
 mod system_emoji;
 
@@ -11,7 +11,7 @@ use super::MessageBotRecieved;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Deserialize, Serialize)]
 #[repr(u32)]
-#[serde(try_from = "EmojiJson", into = "EmojiJson")] 
+#[serde(try_from = "EmojiJson", into = "EmojiJson")]
 pub enum Emoji {
     System(u32) = 1,
     Raw(u32) = 2,
@@ -22,13 +22,16 @@ impl TryFrom<EmojiJson> for Emoji {
 
     fn try_from(value: EmojiJson) -> Result<Self, Self::Error> {
         match value.r#type {
-            1 => Ok(Emoji::System(value.id.parse().map_err(|e| format!("cannot parse system emoji id <{id}>: {e}", id=value.id))?)),
-            2 => Ok(Emoji::Raw(value.id.parse().map_err(|e| format!("cannot parse raw emoji id <{id}>: {e}", id=value.id))?)),
+            1 => Ok(Emoji::System(value.id.parse().map_err(|e| {
+                format!("cannot parse system emoji id <{id}>: {e}", id = value.id)
+            })?)),
+            2 => Ok(Emoji::Raw(value.id.parse().map_err(|e| {
+                format!("cannot parse raw emoji id <{id}>: {e}", id = value.id)
+            })?)),
             _ => Err("Unknown emoji type".to_owned()),
         }
     }
 }
-
 
 impl From<Emoji> for EmojiJson {
     fn from(val: Emoji) -> Self {

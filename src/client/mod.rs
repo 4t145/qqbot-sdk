@@ -5,7 +5,11 @@
 
 use std::{error::Error, sync::Arc};
 
-use tokio::sync::broadcast;
+use futures_util::{Future, FutureExt};
+use tokio::{
+    sync::{broadcast, Notify},
+    task::JoinHandle,
+};
 
 use crate::{
     model::{MessageAudited, MessageBotRecieved, MessageReaction},
@@ -47,6 +51,7 @@ pub enum ConnectionState {
     #[default]
     Disconnected = 3,
     Guaranteed = 4,
+    Zombie = 5,
 }
 
 impl std::fmt::Display for ConnectionState {
@@ -57,6 +62,7 @@ impl std::fmt::Display for ConnectionState {
             ConnectionState::Reconnecting => write!(f, "Reconnecting"),
             ConnectionState::Disconnected => write!(f, "Disconnected"),
             ConnectionState::Guaranteed => write!(f, "Guaranteed"),
+            ConnectionState::Zombie => write!(f, "Zombie"),
         }
     }
 }
@@ -80,6 +86,45 @@ impl From<u8> for ConnectionState {
     }
 }
 
+impl ConnectConfig {
+    pub fn start_connection_with_shutdown_signal<C: Connection + Send>(
+        self,
+        event_sender: broadcast::Sender<ClientEvent>,
+        shutdown_signal: impl Future<Output = ()> + Send + 'static,
+    ) -> JoinHandle<Result<(), C::Error>> {
+        tokio::spawn(async move {
+            let mut conn = C::new(self, event_sender);
+            conn.connect().await?;
+            let notifier = Arc::new(Notify::new());
+            let notifiee = notifier.clone();
+            tokio::spawn(async move {
+                shutdown_signal.await;
+                notifier.notify_one();
+            });
+            conn.wait_disconect(notifiee).await?;
+            Ok(())
+        })
+    }
+    pub fn start_connection_with_ctrl_c<C: Connection + Send>(
+        self,
+        event_sender: broadcast::Sender<ClientEvent>,
+    ) -> JoinHandle<Result<(), C::Error>> {
+        self.start_connection_with_shutdown_signal::<C>(
+            event_sender,
+            tokio::signal::ctrl_c().map(|_| ()),
+        )
+    }
+    pub fn start_connection<C: Connection + Send>(
+        self,
+        event_sender: broadcast::Sender<ClientEvent>,
+    ) -> JoinHandle<Result<(), C::Error>> {
+        self.start_connection_with_shutdown_signal::<C>(
+            event_sender,
+            futures_util::future::pending(),
+        )
+    }
+}
+
 #[async_trait::async_trait]
 pub trait Connection {
     type Error: Error + Send + Sync + 'static;
@@ -100,7 +145,10 @@ pub trait Connection {
             }
             ConnectionState::Reconnecting => {
                 log::warn!("Trying to connect while reconnecting");
-                Err(Self::confict_state_err(state, ConnectionState::Disconnected))
+                Err(Self::confict_state_err(
+                    state,
+                    ConnectionState::Disconnected,
+                ))
             }
             ConnectionState::Disconnected => {
                 log::info!("Start Connecting");
@@ -108,7 +156,17 @@ pub trait Connection {
             }
             ConnectionState::Guaranteed => {
                 log::warn!("Trying to connect while guaranteed");
-                Err(Self::confict_state_err(state, ConnectionState::Disconnected))
+                Err(Self::confict_state_err(
+                    state,
+                    ConnectionState::Disconnected,
+                ))
+            }
+            ConnectionState::Zombie => {
+                log::error!("Connection is zombie, please drop it and reruning");
+                Err(Self::confict_state_err(
+                    state,
+                    ConnectionState::Disconnected,
+                ))
             }
         }
     }
@@ -118,7 +176,10 @@ pub trait Connection {
         match state {
             ConnectionState::Connecting => {
                 log::warn!("Trying to reconnect while connecting");
-                Err(Self::confict_state_err(state, ConnectionState::Disconnected))
+                Err(Self::confict_state_err(
+                    state,
+                    ConnectionState::Disconnected,
+                ))
             }
             ConnectionState::Connected => {
                 log::warn!("Already connected");
@@ -126,7 +187,10 @@ pub trait Connection {
             }
             ConnectionState::Reconnecting => {
                 log::warn!("Trying to reconnect while reconnecting");
-                Err(Self::confict_state_err(state, ConnectionState::Disconnected))
+                Err(Self::confict_state_err(
+                    state,
+                    ConnectionState::Disconnected,
+                ))
             }
             ConnectionState::Disconnected => {
                 log::info!("Start Reconnecting");
@@ -134,26 +198,47 @@ pub trait Connection {
             }
             ConnectionState::Guaranteed => {
                 log::warn!("Trying to connect while guaranteed");
-                Err(Self::confict_state_err(state, ConnectionState::Disconnected))
+                Err(Self::confict_state_err(
+                    state,
+                    ConnectionState::Disconnected,
+                ))
+            }
+            ConnectionState::Zombie => {
+                log::error!("Connection is zombie, please drop it and reruning");
+                Err(Self::confict_state_err(
+                    state,
+                    ConnectionState::Disconnected,
+                ))
             }
         }
     }
     async fn reconnect_inner(&mut self) -> Result<(), Self::Error>;
 
-    async fn wait_disconect(&mut self) -> Result<(), Self::Error> {
+    async fn wait_disconect(
+        &mut self,
+        signal: Arc<tokio::sync::Notify>,
+    ) -> Result<(), Self::Error> {
         let state = self.get_state();
         match state {
             ConnectionState::Connecting => {
                 log::warn!("Trying to wait_disconect while connecting");
-                Err(Self::confict_state_err(state, ConnectionState::Disconnected))
+                Err(Self::confict_state_err(
+                    state,
+                    ConnectionState::Disconnected,
+                ))
             }
             ConnectionState::Connected => {
                 log::info!("Start wait_disconect");
-                self.wait_disconect_inner().await
+                let res = self.wait_disconect_inner(signal).await;
+                log::info!("End wait_disconect");
+                res
             }
             ConnectionState::Reconnecting => {
                 log::warn!("Trying to wait_disconect while reconnecting");
-                Err(Self::confict_state_err(state, ConnectionState::Disconnected))
+                Err(Self::confict_state_err(
+                    state,
+                    ConnectionState::Disconnected,
+                ))
             }
             ConnectionState::Disconnected => {
                 log::warn!("Already disconnected");
@@ -161,13 +246,25 @@ pub trait Connection {
             }
             ConnectionState::Guaranteed => {
                 log::warn!("Trying to connect while guaranteed");
-                Err(Self::confict_state_err(state, ConnectionState::Disconnected))
+                Err(Self::confict_state_err(
+                    state,
+                    ConnectionState::Disconnected,
+                ))
+            }
+            ConnectionState::Zombie => {
+                log::error!("Connection is zombie, please drop it and reruning");
+                Err(Self::confict_state_err(
+                    state,
+                    ConnectionState::Disconnected,
+                ))
             }
         }
     }
 
-    async fn wait_disconect_inner(&mut self) -> Result<(), Self::Error>;
-
+    async fn wait_disconect_inner(
+        &mut self,
+        signal: Arc<tokio::sync::Notify>,
+    ) -> Result<(), Self::Error>;
 }
 
 // pub type SeqEvent = (Event, u32);

@@ -7,12 +7,8 @@ use crate::{
             GetEmojiReactionUserListRequest, SendEmojiReaction,
         },
         user::GetMe,
-        websocket::Gateway,
-        Authority,
     },
-    client::{reqwest_client::ApiClient, ConnectConfig, ConnectType},
     model::{Guild, MessageSend, User},
-    websocket::{Event, Identify},
 };
 
 use super::*;

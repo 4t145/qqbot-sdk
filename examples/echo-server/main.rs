@@ -3,7 +3,8 @@ use std::sync::Arc;
 use qqbot_sdk::{
     api::Authority,
     bot::{Bot, BotBuilder, BotError, Handler, MessageBuilder},
-    websocket::Intends, client::ClientEvent,
+    client::ClientEvent,
+    websocket::Intends,
 };
 
 #[tokio::main]
@@ -47,7 +48,7 @@ async fn async_main() -> Result<(), BotError> {
     let bot = BotBuilder::default()
         .auth(auth)
         .intents(Intends::PUBLIC_GUILD_MESSAGES | Intends::GUILD_MESSAGE_REACTIONS)
-        .build()
+        .start()
         .await
         .unwrap();
     log::info!("bot: {:?}", bot.about_me().await?);
@@ -55,6 +56,6 @@ async fn async_main() -> Result<(), BotError> {
     log::info!("guilds count: {:?}", bot.cache().get_guilds_count().await);
     bot.register_handler("echo", EchoHandler).await;
     // wait for ctrl-c
-    tokio::signal::ctrl_c().await.unwrap();
+    bot.await;
     Ok(())
 }
