@@ -9,8 +9,11 @@ use serde_with::{serde_as, DisplayFromStr};
 pub struct User {
     #[serde_as(as = "DisplayFromStr")]
     pub id: u64,
+    #[serde(default)]
     pub username: String,
-    pub bot: Option<bool>,
+    /// 妹说就是不是
+    #[serde(default)]
+    pub bot: bool,
     pub avatar: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub union_openid: Option<String>,

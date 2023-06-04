@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use qqbot_sdk::{
-    api::Authority,
+    api::{Authority, reaction::EmojiReactionDescriptor},
     bot::{Bot, BotBuilder, BotError, Handler, MessageBuilder},
     client::ClientEvent,
-    websocket::Intends,
+    websocket::Intends, model::{Emoji, RawEmoji},
 };
 
 #[tokio::main]
@@ -20,6 +20,26 @@ impl Handler for EchoHandler {
     fn handle(&self, event: ClientEvent, ctx: Arc<Bot>) -> Result<(), BotError> {
         tokio::spawn(async move {
             match event {
+                ClientEvent::MessageCreate(m) if !m.author.bot => {
+                    log::info!("message: {:?}", m);
+                    // 贴猴
+                    ctx.create_reaction(&EmojiReactionDescriptor {
+                        channel_id: m.channel_id,
+                        message_id: m.id,
+                        emoji: Emoji::Raw(RawEmoji::猴)
+                    }).await.unwrap_or_default();
+                }
+                ClientEvent::MessageDelete(m) => {
+                    log::info!("message delete: {:?}", m);
+                    ctx.post_message(
+                        m.message.channel_id,
+                        &MessageBuilder::default()
+                            .reply_to_id(m.message.id)
+                            .content(format!("message delete: {:?}", m).as_str())
+                            .build()
+                            .unwrap(),
+                    ).await.unwrap();
+                }
                 ClientEvent::AtMessageCreate(m) => {
                     let channel_id = m.channel_id;
                     let sender = &m.author.clone();
@@ -34,7 +54,7 @@ impl Handler for EchoHandler {
                     .await {
                         Ok(_) => log::info!("echo: {:?}", sender),
                         Err(e) => log::error!("echo: {:?}, error: {:?}", sender, e),
-                    }
+                    };
                 }
                 other => log::info!("event: {:?}", other),
             }
@@ -50,7 +70,7 @@ async fn async_main() -> Result<(), BotError> {
     };
     let bot = BotBuilder::default()
         .auth(auth)
-        .intents(Intends::PUBLIC_GUILD_MESSAGES | Intends::GUILD_MESSAGE_REACTIONS)
+        .intents(Intends::PUBLIC_GUILD_MESSAGES | Intends::GUILD_MESSAGE_REACTIONS | Intends::GUILD_MESSAGES )
         .start()
         .await
         .unwrap();

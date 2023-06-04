@@ -20,6 +20,7 @@ impl From<Payload> for DownloadPayload {
     fn from(payload: Payload) -> Self {
         match payload.opcode {
             Opcode::Dispatch => {
+                log::debug!("recieve dispatch payload: {payload:?}");
                 let json_value = json!({
                     "tag": payload.tag,
                     "data": payload.data,

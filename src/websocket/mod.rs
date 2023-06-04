@@ -52,6 +52,9 @@ pub enum Opcode {
 #[serde(tag = "tag", content = "data", rename_all = "SCREAMING_SNAKE_CASE")]
 #[non_exhaustive]
 pub enum Event {
+    MessageCreate(Box<MessageBotRecieved>),
+    MessageDelete(Box<MessageDeleted>),
+    PublicMessageDelete(Box<MessageDeleted>),
     AtMessageCreate(Box<MessageBotRecieved>),
     MessageAuditPass(Box<MessageAudited>),
     MessageAuditReject(Box<MessageAudited>),

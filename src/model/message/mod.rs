@@ -42,6 +42,7 @@ pub struct MessageBotRecieved {
     #[serde_as(as = "DisplayFromStr")]
     /// 频道 id
     pub guild_id: GuildId,
+    #[serde(default)]
     /// 消息内容
     pub content: String,
     #[serde(
@@ -90,6 +91,23 @@ pub struct MessageBotRecieved {
     #[serde_as(as = "Option<DisplayFromStr>")]
     /// 用于私信场景下识别真实的来源频道id
     pub src_guild_id: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MessageDeleted {
+    pub message: MessageDeleteMessage,
+    pub op_user: User,
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MessageDeleteMessage {
+    pub id: MessageId,
+    #[serde_as(as = "DisplayFromStr")]
+    pub channel_id: ChannelId,
+    #[serde_as(as = "DisplayFromStr")]
+    pub guild_id: GuildId,
+    pub author: User,
 }
 
 #[serde_as]

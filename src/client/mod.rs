@@ -12,7 +12,7 @@ use tokio::{
 };
 
 use crate::{
-    model::{MessageAudited, MessageBotRecieved, MessageReaction},
+    model::{MessageAudited, MessageBotRecieved, MessageReaction, MessageDeleted},
     websocket::{Event, Identify, Resume},
 };
 
@@ -271,6 +271,9 @@ pub trait Connection {
 
 #[derive(Debug, Clone)]
 pub enum ClientEvent {
+    MessageCreate(Arc<MessageBotRecieved>),
+    MessageDelete(Arc<MessageDeleted>),
+    PublicMessageDelete(Arc<MessageDeleted>),
     AtMessageCreate(Arc<MessageBotRecieved>),
     MessageAuditPass(Arc<MessageAudited>),
     MessageAuditReject(Arc<MessageAudited>),
@@ -292,6 +295,9 @@ impl TryFrom<Event> for ClientEvent {
         }
         map_event! {
             event =>
+                | MessageCreate
+                | MessageDelete
+                | PublicMessageDelete
                 | AtMessageCreate
                 | MessageAuditPass
                 | MessageAuditReject
