@@ -22,7 +22,7 @@ use std::{
     ops::Deref,
     pin::Pin,
     sync::Arc,
-    task::{Context, Poll},
+    task::{Context, Poll}, error::Error, fmt::Display,
 };
 use tokio::{sync::RwLock, task::JoinHandle};
 pub use user::*;
@@ -125,6 +125,8 @@ pub enum BotBuildError {
     WsConnectError(crate::client::tungstenite_client::TungsteniteConnectionError),
 }
 
+
+
 impl<'a> BotBuilder<'a> {
     pub fn auth(self, authority: Authority<'a>) -> Self {
         Self {
@@ -148,7 +150,7 @@ impl<'a> BotBuilder<'a> {
         Self { auto_shard, ..self }
     }
 
-    pub async fn start<C: Connection + Send>(mut self) -> Result<Bot<C>, BotBuildError> {
+    pub async fn start<C: Connection + Send>(mut self) -> Result<Bot<C>, BotError> {
         let auth = self.authority.ok_or(BotBuildError::NoAuthority)?;
         let token = auth.token();
         let api_client = ApiClient::new(auth);
@@ -157,8 +159,7 @@ impl<'a> BotBuilder<'a> {
                 .send::<GatewayBot>(&())
                 .await
                 .map_err(BotBuildError::ApiError)?
-                .as_result()
-                .unwrap();
+                .as_result()?;
             self.shards = Some(Shards::new_all(response.shards));
             response.url
         } else {
@@ -166,8 +167,7 @@ impl<'a> BotBuilder<'a> {
                 .send::<Gateway>(&())
                 .await
                 .map_err(BotBuildError::ApiError)?
-                .as_result()
-                .unwrap()
+                .as_result()?
                 .url
         };
         log::info!("ws gate url: {}", url);
@@ -226,8 +226,38 @@ impl<'a> BotBuilder<'a> {
 pub enum BotError {
     ApiError(reqwest::Error),
     BadRequest(crate::api::ResponseFail),
+    BuildError(BotBuildError),
 }
 
+impl Display for BotError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BotError::ApiError(e) => write!(f, "api error: {}", e),
+            BotError::BadRequest(e) => write!(f, "bad request: {}", e),
+            BotError::BuildError(e) => write!(f, "build error: {:?}", e),
+        }
+    }
+}
+
+impl Error for BotError {}
+
+impl From<reqwest::Error> for BotError {
+    fn from(val: reqwest::Error) -> Self {
+        BotError::ApiError(val)
+    }
+}
+
+impl From<crate::api::ResponseFail> for BotError {
+    fn from(val: crate::api::ResponseFail) -> Self {
+        BotError::BadRequest(val)
+    }
+}
+
+impl From<BotBuildError> for BotError {
+    fn from(val: BotBuildError) -> Self {
+        BotError::BuildError(val)
+    }
+}
 /// error and recover
 impl Bot {
     pub fn is_conn_health(&self) -> bool {

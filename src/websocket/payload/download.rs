@@ -1,9 +1,7 @@
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::websocket::{Event, Opcode};
-
-use super::Payload;
+use crate::websocket::{Event, Opcode, Payload};
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(from = "Payload")]
@@ -46,19 +44,14 @@ impl From<Payload> for DownloadPayload {
             Opcode::Hello => DownloadPayload::Hello {
                 heartbeat_interval: payload
                     .data
-                    .unwrap()
+                    .expect("hello payload should have data")
                     .get("heartbeat_interval")
-                    .unwrap()
+                    .expect("hello payload should have heartbeat_interval")
                     .as_u64()
-                    .unwrap(),
+                    .expect("hello payload heartbeat_interval should be able to convert into u64"),
             },
             Opcode::HeartbeatAck => DownloadPayload::HeartbeatAck,
             code => panic!("recieve websocket payload of unsupport opcode {code:?}"),
         }
     }
-}
-
-use actix::prelude::*;
-impl Message for DownloadPayload {
-    type Result = ();
 }

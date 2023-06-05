@@ -1,3 +1,4 @@
+#![warn(clippy::unwrap_used)]
 pub mod api;
 pub mod bot;
 pub mod client;

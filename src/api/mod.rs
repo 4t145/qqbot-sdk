@@ -12,7 +12,7 @@ pub mod message;
 pub mod reaction;
 pub mod user;
 pub mod websocket;
-
+pub mod errors;
 #[derive(Clone, Debug)]
 /// 授权
 pub enum Authority<'a> {
@@ -63,14 +63,14 @@ pub trait Api {
 }
 
 pub fn json_request<A: Api>(request: &A::Request, auth: &str) -> Request<Vec<u8>> {
-    let body = serde_json::to_vec::<A::Request>(request).unwrap();
+    let body = serde_json::to_vec::<A::Request>(request).expect("fail to serialize json request");
     Request::builder()
         .uri(format!("{}{}", domain(), A::path(request)))
         .header(AUTHORIZATION, auth)
         .header(CONTENT_TYPE, "application/json")
         .method(A::METHOD)
         .body(body)
-        .unwrap()
+        .expect("fail to build json request")
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -83,8 +83,12 @@ pub struct ResponseFail {
 impl Display for ResponseFail {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(format!("请求失败：[{:4}]{}", self.code, self.message.as_str()).as_str())?;
-        f.write_str("data: \n")?;
-        f.write_str(serde_json::to_string_pretty(&self.data).unwrap().as_str())
+        if let Some(data) = &self.data {
+            f.write_str("\n")?;
+            f.write_str(data.to_string().as_str())
+        } else {
+            f.write_str("\n没有数据")
+        }
     }
 }
 
@@ -109,7 +113,7 @@ impl<T> Response<T> {
             Response::Ok(v) => Ok(v),
             Response::Fail(f) => Err(f),
             Response::CannotParse(v) => Err(ResponseFail {
-                message: format!("无法解析\n{}", serde_json::to_string_pretty(&v).unwrap()),
+                message: format!("无法解析\n{}", v),
                 code: u32::MAX,
                 data: None,
             }),

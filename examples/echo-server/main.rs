@@ -31,7 +31,7 @@ impl Handler for EchoHandler {
                 }
                 ClientEvent::MessageDelete(m) => {
                     log::info!("message delete: {:?}", m);
-                    ctx.post_message(
+                    ctx.send_message(
                         m.message.channel_id,
                         &MessageBuilder::default()
                             .reply_to_id(m.message.id)
@@ -43,7 +43,7 @@ impl Handler for EchoHandler {
                 ClientEvent::AtMessageCreate(m) => {
                     let channel_id = m.channel_id;
                     let sender = &m.author.clone();
-                    match ctx.post_message(
+                    match ctx.send_message(
                         channel_id,
                         &MessageBuilder::default()
                             .content(m.content.as_str())

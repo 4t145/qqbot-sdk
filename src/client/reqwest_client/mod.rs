@@ -15,7 +15,7 @@ pub struct ApiClient {
 impl ApiClient {
     /// 仅仅提供授权，构建一个默认的客户端
     pub fn new(auth: Authority) -> Self {
-        let client = ClientBuilder::new().https_only(true).build().unwrap();
+        let client = ClientBuilder::new().https_only(true).build().unwrap_or_default();
         let auth_header = auth.header();
         Self {
             client,
@@ -54,11 +54,7 @@ impl ApiClient {
         &self,
         request: &A::Request,
     ) -> Result<Response<A::Response>, reqwest::Error> {
-        let url = Url::parse(format!("{}{}", domain(), A::path(request)).as_str()).unwrap();
-        log::debug!(
-            "send request: {json} to {url}",
-            json = serde_json::to_string_pretty(request).unwrap()
-        );
+        let url = Url::parse(format!("{}{}", domain(), A::path(request)).as_str()).expect("invalid url, report this bug");
         let resp = self
             .client
             .request(A::METHOD, url)

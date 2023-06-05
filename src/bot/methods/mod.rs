@@ -17,18 +17,30 @@ impl Bot {
     pub fn cache(&self) -> BotCache {
         self.cache.clone()
     }
-    pub async fn post_message(
+    pub async fn send_message(
         &self,
         channel_id: u64,
         message: &MessageSend<'_>,
     ) -> Result<crate::model::MessageBotRecieved, BotError> {
         let request = PostMessageRequest::new(channel_id, message);
-        self.api_client
+        let resp = self.api_client
             .send::<PostMessage>(&request)
-            .await
-            .map_err(BotError::ApiError)?
-            .as_result()
-            .map_err(BotError::BadRequest)
+            .await?
+            .as_result();
+        match resp {
+            Ok(msg) => {
+                Ok(msg)
+            }
+            Err(e) => {
+                match e.code {
+                    // 审核中
+                    304023 | 304024 => {
+                        todo!("添加消息审核")
+                    }
+                    _ => Err(BotError::BadRequest(e)),
+                }
+            },
+        }
     }
 
     pub async fn about_me(&self) -> Result<crate::model::User, BotError> {

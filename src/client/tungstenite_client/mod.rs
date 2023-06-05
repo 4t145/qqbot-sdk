@@ -1,5 +1,4 @@
-use tokio::{sync::broadcast, task::JoinHandle};
-use tungstenite::protocol::frame::coding::CloseCode;
+use tokio::{sync::{broadcast, mpsc}, task::JoinHandle};
 
 use futures_util::{SinkExt, StreamExt};
 use std::{
@@ -10,7 +9,11 @@ use std::{
         Arc,
     },
 };
-use tokio_tungstenite::{connect_async, WebSocketStream};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{self, protocol::frame::coding::CloseCode},
+    WebSocketStream,
+};
 
 use crate::websocket::{DownloadPayload, Event, Resume, UploadPayload};
 
@@ -33,7 +36,8 @@ impl From<WsMessage> for Option<DownloadPayload> {
 impl From<&UploadPayload> for WsMessage {
     fn from(upload: &UploadPayload) -> WsMessage {
         WsMessage(tungstenite::Message::Text(
-            serde_json::to_string(upload).unwrap(),
+            serde_json::to_string(upload)
+            .expect(r#"Upload payload should be able to convert into json string, since it's construct by qqbot-sdk lib itself, it's a serious bug so please report if you see this message"#),
         ))
     }
 }
@@ -178,6 +182,19 @@ impl TungsteniteConnection {
                                 DownloadPayload::Dispatch { event, seq } => {
                                     log::debug!("ws client recieve event: {:?}", event);
                                     last_seq.store(seq, Ordering::Relaxed);
+                                    match *event {
+                                        ClientEvent::Ready { ready } => {
+                                            // 更新session
+                                            self.session
+                                                .write()
+                                                .await
+                                                .replace(ready.session_id.clone());
+                                        }
+                                        ClientEvent::Resumed => {
+                                            // 重连成功
+                                        }
+                                        _ => {}
+                                    }
                                     let Ok(client_event): Result<ClientEvent, ()> = (*event).try_into() else {
                                         continue;
                                     };
@@ -240,7 +257,7 @@ impl TungsteniteConnection {
 #[async_trait::async_trait]
 impl Connection for TungsteniteConnection {
     type Error = TungsteniteConnectionError;
-    fn new(config: ConnectConfig, event_sender: broadcast::Sender<ClientEvent>) -> Self {
+    fn new(config: ConnectConfig, event_sender: broadcast::Sender<ClientEvent>, hook_receiver: mpsc::Receiver<String>) -> Self {
         Self {
             state: TungsteniteConnectionState::Disconnected {
                 resume: None,
