@@ -1,6 +1,8 @@
-use std::{collections::btree_map::BTreeMap, pin::Pin, future::Pending, sync::Weak};
+use std::{collections::btree_map::BTreeMap, pin::Pin, future::Pending, sync::Weak, fmt::Debug};
 
 use tokio::sync::{oneshot, RwLock, Mutex};
+
+use crate::model::MessageAudited;
 
 
 pub struct AuditHook {
@@ -17,17 +19,26 @@ impl AuditTask {
         self.0.await.unwrap_or(AuditResult::Timeout)
     }
 }
+
 pub enum AuditResult {
-    Pass,
-    Reject,
+    Pass(MessageAudited),
+    Reject(MessageAudited),
     Timeout,
 }
+
 
 pub struct AuditHookPool {
     expire: tokio::time::Duration,
     pool: Mutex<BTreeMap<String, AuditHook>>
 }
 
+impl Debug for AuditHookPool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuditHookPool")
+            .field("expire", &self.expire)
+            .finish()
+    }
+}
 impl AuditHookPool {
     pub fn new(expire: tokio::time::Duration) -> Self {
         Self {

@@ -15,9 +15,9 @@ use tokio_tungstenite::{
     WebSocketStream,
 };
 
-use crate::websocket::{DownloadPayload, Event, Resume, UploadPayload};
+use crate::{websocket::{DownloadPayload, Event, Resume, UploadPayload}, client::audit_hook::AuditResult, api::message, model::MessageBotRecieved};
 
-use super::{ClientEvent, ConnectConfig, Connection, ConnectionState};
+use super::{ClientEvent, ConnectConfig, Connection, ConnectionState, audit_hook::AuditHookPool};
 
 #[repr(transparent)]
 struct WsMessage(tungstenite::Message);
@@ -83,6 +83,7 @@ pub struct TungsteniteConnection {
     config: ConnectConfig,
     event_sender: broadcast::Sender<ClientEvent>,
     last_sequence: Arc<AtomicU32>,
+    audit_hook_pool: Arc<AuditHookPool>,
 }
 type WsRx = futures_util::stream::SplitStream<
     WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
@@ -123,6 +124,7 @@ impl TungsteniteConnection {
     fn recv_loop(&self, mut rx: WsRx) -> JoinHandle<(bool, bool)> {
         let last_seq = self.last_sequence.clone();
         let event_tx = self.event_sender.clone();
+        let audit_hook_pool = self.audit_hook_pool.clone();
         let recv_jh: JoinHandle<(bool, bool)> = tokio::spawn(async move {
             while let Some(maybe_message) = rx.next().await {
                 match maybe_message {
@@ -182,18 +184,20 @@ impl TungsteniteConnection {
                                 DownloadPayload::Dispatch { event, seq } => {
                                     log::debug!("ws client recieve event: {:?}", event);
                                     last_seq.store(seq, Ordering::Relaxed);
-                                    match *event {
-                                        ClientEvent::Ready { ready } => {
-                                            // 更新session
-                                            self.session
-                                                .write()
-                                                .await
-                                                .replace(ready.session_id.clone());
+                                    match event.as_ref() {
+                                        Event::MessageAuditPass(audit) => {
+                                            let audit = audit.as_ref().clone();
+                                            let audit_id = audit.audit_id.clone();
+                                            audit_hook_pool.resolve(&audit_id, AuditResult::Pass(audit)).await;
                                         }
-                                        ClientEvent::Resumed => {
-                                            // 重连成功
+                                        Event::MessageAuditReject(audit) => {
+                                            let audit = audit.as_ref().clone();
+                                            let audit_id = audit.audit_id.clone();
+                                            audit_hook_pool.resolve(&audit_id, AuditResult::Reject(audit)).await;
                                         }
-                                        _ => {}
+                                        _ => {
+                                            // 其他事件
+                                        }
                                     }
                                     let Ok(client_event): Result<ClientEvent, ()> = (*event).try_into() else {
                                         continue;
@@ -257,7 +261,7 @@ impl TungsteniteConnection {
 #[async_trait::async_trait]
 impl Connection for TungsteniteConnection {
     type Error = TungsteniteConnectionError;
-    fn new(config: ConnectConfig, event_sender: broadcast::Sender<ClientEvent>, hook_receiver: mpsc::Receiver<String>) -> Self {
+    fn new(config: ConnectConfig, event_sender: broadcast::Sender<ClientEvent>, hook_pool: Arc<AuditHookPool>) -> Self {
         Self {
             state: TungsteniteConnectionState::Disconnected {
                 resume: None,
@@ -266,6 +270,7 @@ impl Connection for TungsteniteConnection {
             config,
             event_sender,
             last_sequence: Arc::new(AtomicU32::new(0)),
+            audit_hook_pool: hook_pool
         }
     }
 

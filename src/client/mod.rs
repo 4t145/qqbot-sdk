@@ -20,6 +20,7 @@ use crate::{
 pub mod reqwest_client;
 pub mod tungstenite_client;
 pub(crate) mod audit_hook;
+use audit_hook::*;
 // pub mod actix_ws_client;
 
 #[derive(Debug, Clone)]
@@ -91,11 +92,11 @@ impl ConnectConfig {
     pub fn start_connection_with_shutdown_signal<C: Connection + Send>(
         self,
         event_sender: broadcast::Sender<ClientEvent>,
-        hook_receiver: mpsc::Receiver<String>,
+        hook_poll: Arc<AuditHookPool>,
         shutdown_signal: impl Future<Output = ()> + Send + 'static,
     ) -> JoinHandle<Result<(), C::Error>> {
         tokio::spawn(async move {
-            let mut conn = C::new(self, event_sender, hook_receiver);
+            let mut conn = C::new(self, event_sender, hook_poll);
             conn.connect().await?;
             let notifier = Arc::new(Notify::new());
             let notifiee = notifier.clone();
@@ -110,22 +111,22 @@ impl ConnectConfig {
     pub fn start_connection_with_ctrl_c<C: Connection + Send>(
         self,
         event_sender: broadcast::Sender<ClientEvent>,
-        hook_receiver: mpsc::Receiver<String>,
+        hook_poll: Arc<AuditHookPool>,
     ) -> JoinHandle<Result<(), C::Error>> {
         self.start_connection_with_shutdown_signal::<C>(
             event_sender,
-            hook_receiver,
+            hook_poll,
             tokio::signal::ctrl_c().map(|_| ()),
         )
     }
     pub fn start_connection<C: Connection + Send>(
         self,
         event_sender: broadcast::Sender<ClientEvent>,
-        hook_receiver: mpsc::Receiver<String>,
+        hook_poll: Arc<AuditHookPool>,
     ) -> JoinHandle<Result<(), C::Error>> {
         self.start_connection_with_shutdown_signal::<C>(
             event_sender,
-            hook_receiver,
+            hook_poll,
             futures_util::future::pending(),
         )
     }
@@ -134,7 +135,7 @@ impl ConnectConfig {
 #[async_trait::async_trait]
 pub trait Connection {
     type Error: Error + Send + Sync + 'static;
-    fn new(connect_config: ConnectConfig, event_sender: broadcast::Sender<ClientEvent>, hook_receiver: mpsc::Receiver<String>) -> Self;
+    fn new(connect_config: ConnectConfig, event_sender: broadcast::Sender<ClientEvent>, hook_poll: Arc<AuditHookPool>) -> Self;
     fn get_state(&self) -> ConnectionState;
     fn get_config(&self) -> &ConnectConfig;
     fn confict_state_err(state: ConnectionState, expected: ConnectionState) -> Self::Error;

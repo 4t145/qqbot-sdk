@@ -10,7 +10,7 @@ use crate::{
         websocket::{Gateway, GatewayBot},
         Authority,
     },
-    client::{reqwest_client::ApiClient, ClientEvent, ConnectConfig, Connection},
+    client::{reqwest_client::ApiClient, ClientEvent, ConnectConfig, Connection, audit_hook::AuditHookPool},
     model::Guild,
     websocket::Identify,
 };
@@ -21,7 +21,7 @@ use std::{
     collections::HashMap,
     ops::Deref,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, mpsc},
     task::{Context, Poll}, error::Error, fmt::Display,
 };
 use tokio::{sync::RwLock, task::JoinHandle};
@@ -43,6 +43,7 @@ pub struct BotInner<
     cache: BotCache,
     handlers: RwLock<HashMap<String, JoinHandle<()>>>, // dispacher: Arc<RwLock<EventDispatcher>>,
     conn_tasks: Vec<JoinHandle<Result<(), C::Error>>>,
+    audit_hook_pool: Arc<AuditHookPool>,
 }
 
 impl<C: Connection> BotInner<C> {
@@ -151,6 +152,8 @@ impl<'a> BotBuilder<'a> {
     }
 
     pub async fn start<C: Connection + Send>(mut self) -> Result<Bot<C>, BotError> {
+        let audit_expire = tokio::time::Duration::from_secs(30);
+        let hook_pool = Arc::new(AuditHookPool::new(audit_expire));
         let auth = self.authority.ok_or(BotBuildError::NoAuthority)?;
         let token = auth.token();
         let api_client = ApiClient::new(auth);
@@ -190,7 +193,7 @@ impl<'a> BotBuilder<'a> {
                     retry_interval: tokio::time::Duration::from_secs(30),
                     identify,
                 };
-                let conn_task = connect_option.start_connection_with_ctrl_c::<C>(event_tx.clone());
+                let conn_task = connect_option.start_connection_with_ctrl_c::<C>(event_tx.clone(), hook_pool.clone());
                 task_handles.push(conn_task);
             }
         } else {
@@ -208,7 +211,7 @@ impl<'a> BotBuilder<'a> {
                 retry_interval: tokio::time::Duration::from_secs(30),
                 identify,
             };
-            let _conn_task = connect_option.start_connection_with_ctrl_c::<C>(event_tx.clone());
+            let _conn_task = connect_option.start_connection_with_ctrl_c::<C>(event_tx.clone(), hook_pool.clone());
             task_handles.push(_conn_task);
         }
 
@@ -217,6 +220,7 @@ impl<'a> BotBuilder<'a> {
             event_tx,
             cache: BotCache::default(),
             handlers: RwLock::new(HashMap::new()),
+            audit_hook_pool: hook_pool,
             conn_tasks: task_handles,
         })))
     }
@@ -227,6 +231,7 @@ pub enum BotError {
     ApiError(reqwest::Error),
     BadRequest(crate::api::ResponseFail),
     BuildError(BotBuildError),
+    AuditTimeout,
 }
 
 impl Display for BotError {
@@ -235,6 +240,7 @@ impl Display for BotError {
             BotError::ApiError(e) => write!(f, "api error: {}", e),
             BotError::BadRequest(e) => write!(f, "bad request: {}", e),
             BotError::BuildError(e) => write!(f, "build error: {:?}", e),
+            BotError::AuditTimeout => write!(f, "audit timeout"),
         }
     }
 }

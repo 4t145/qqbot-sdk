@@ -8,6 +8,7 @@ use crate::{
         },
         user::GetMe,
     },
+    client::audit_hook::AuditResult,
     model::{Guild, MessageSend, User},
 };
 
@@ -17,30 +18,67 @@ impl Bot {
     pub fn cache(&self) -> BotCache {
         self.cache.clone()
     }
+    pub async fn send_message_public(
+        &self,
+        channel_id: u64,
+        message: &MessageSend<'_>,
+    ) -> Result<crate::model::MessageAudited, BotError> {
+        let request = PostMessageRequest::new(channel_id, message);
+        let resp = self
+            .api_client
+            .send::<PostMessage>(&request)
+            .await?
+            .as_result();
+        match resp {
+            Ok(msg) => {
+                // it's impossible to get a message_id here
+                // because the message is not audited yet
+                Ok(msg.into())
+            }
+            Err(f) => {
+                match f.code {
+                    // 审核中
+                    304023 | 304024 => {
+                        let Some(data) = f.data.clone() else {
+                            return Err(BotError::BadRequest(f));
+                        };
+                        let audit_hook_id = data
+                            .get("message_audit")
+                            .expect("audited body should have message_audit")
+                            .get("audit_id")
+                            .expect("message_audit should have audit_id")
+                            .as_str()
+                            .expect("audit_id should be string")
+                            .to_owned();
+                        let res = self
+                            .audit_hook_pool
+                            .create(audit_hook_id)
+                            .await
+                            .await_result()
+                            .await;
+                        match res {
+                            AuditResult::Pass(a) => Ok(a),
+                            AuditResult::Reject(a) => Ok(a),
+                            AuditResult::Timeout => Err(BotError::AuditTimeout),
+                        }
+                    }
+                    _ => Err(BotError::BadRequest(f)),
+                }
+            }
+        }
+    }
     pub async fn send_message(
         &self,
         channel_id: u64,
         message: &MessageSend<'_>,
     ) -> Result<crate::model::MessageBotRecieved, BotError> {
         let request = PostMessageRequest::new(channel_id, message);
-        let resp = self.api_client
+        let resp = self
+            .api_client
             .send::<PostMessage>(&request)
             .await?
-            .as_result();
-        match resp {
-            Ok(msg) => {
-                Ok(msg)
-            }
-            Err(e) => {
-                match e.code {
-                    // 审核中
-                    304023 | 304024 => {
-                        todo!("添加消息审核")
-                    }
-                    _ => Err(BotError::BadRequest(e)),
-                }
-            },
-        }
+            .as_result()?;
+        Ok(resp)
     }
 
     pub async fn about_me(&self) -> Result<crate::model::User, BotError> {

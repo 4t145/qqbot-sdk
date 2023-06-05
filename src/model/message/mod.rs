@@ -81,6 +81,19 @@ pub struct MessageBotRecieved {
     pub src_guild_id: Option<u64>,
 }
 
+impl From<MessageBotRecieved> for MessageAudited {
+    fn from(val: MessageBotRecieved) -> Self {
+        MessageAudited {
+            channel_id: val.channel_id,
+            guild_id: val.guild_id,
+            audit_id: Default::default(),
+            message_id: Some(val.id),
+            audit_time: Utc::now(),
+            create_time: val.timestamp,
+            seq_in_channel: val.seq_in_channel,
+        }
+    }
+}
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MessageDeleted {
     pub message: MessageDeleteMessage,
@@ -276,7 +289,7 @@ pub struct MessageAudited {
     pub audit_id: String,
     // #[serde_as(as = "DisplayFromStr")]
     /// 消息 id，只有审核通过事件才会有值
-    pub message_id: String,
+    pub message_id: Option<MessageId>,
     #[serde_as(as = "DisplayFromStr")]
     /// 频道 id
     pub guild_id: u64,

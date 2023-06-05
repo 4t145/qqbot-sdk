@@ -31,11 +31,11 @@ impl Handler for EchoHandler {
                 }
                 ClientEvent::MessageDelete(m) => {
                     log::info!("message delete: {:?}", m);
-                    ctx.send_message(
+                    ctx.send_message_public(
                         m.message.channel_id,
                         &MessageBuilder::default()
-                            .reply_to_id(m.message.id)
-                            .content(format!("message delete: {:?}", m).as_str())
+                            // .reply_to_id(m.message.id)
+                            .content(format!("message delete").as_str())
                             .build()
                             .unwrap(),
                     ).await.unwrap();

@@ -54,6 +54,8 @@ impl ApiClient {
         &self,
         request: &A::Request,
     ) -> Result<Response<A::Response>, reqwest::Error> {
+        let json = serde_json::to_string_pretty(&request).expect("invalid json, report this bug");
+        dbg!(json);
         let url = Url::parse(format!("{}{}", domain(), A::path(request)).as_str()).expect("invalid url, report this bug");
         let resp = self
             .client
