@@ -35,7 +35,7 @@ features = ["json"]
 version = "0.18"
 
 [dependencies.tokio-tungstenite]
-version = "0.18"
+version = "0.19"
 features = ["native-tls"]
 
 [dependencies.futures-util]
