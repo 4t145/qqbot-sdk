@@ -1,16 +1,15 @@
-use std::{collections::btree_map::BTreeMap, pin::Pin, future::Pending, sync::Weak, fmt::Debug};
+use std::{collections::btree_map::BTreeMap, fmt::Debug};
 
-use tokio::sync::{oneshot, RwLock, Mutex};
+use tokio::sync::{oneshot, Mutex};
 
 use crate::model::MessageAudited;
-
 
 pub struct AuditHook {
     expire_time: tokio::time::Instant,
     sender: oneshot::Sender<AuditResult>,
 }
 #[repr(transparent)]
-pub struct AuditTask (oneshot::Receiver<AuditResult>);
+pub struct AuditTask(oneshot::Receiver<AuditResult>);
 
 impl AuditTask {
     #[inline]
@@ -26,10 +25,9 @@ pub enum AuditResult {
     Timeout,
 }
 
-
 pub struct AuditHookPool {
     expire: tokio::time::Duration,
-    pool: Mutex<BTreeMap<String, AuditHook>>
+    pool: Mutex<BTreeMap<String, AuditHook>>,
 }
 
 impl Debug for AuditHookPool {
@@ -71,7 +69,4 @@ impl AuditHookPool {
         let now = tokio::time::Instant::now();
         pool.retain(|_, v| v.expire_time > now);
     }
-    
-
 }
-

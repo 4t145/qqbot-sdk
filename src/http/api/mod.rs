@@ -1,3 +1,10 @@
+pub mod guild;
+pub mod message;
+pub mod reaction;
+pub mod user;
+pub mod websocket;
+
+use crate::statics::*;
 use std::fmt::Display;
 
 use http::{
@@ -5,14 +12,6 @@ use http::{
     Method, Request,
 };
 use serde::{Deserialize, Serialize};
-
-use crate::statics::*;
-pub mod guild;
-pub mod message;
-pub mod reaction;
-pub mod user;
-pub mod websocket;
-pub mod errors;
 #[derive(Clone, Debug)]
 /// 授权
 pub enum Authority<'a> {

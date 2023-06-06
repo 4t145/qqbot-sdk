@@ -1,4 +1,4 @@
-use tokio::{sync::{broadcast, mpsc}, task::JoinHandle};
+use tokio::{sync::broadcast, task::JoinHandle};
 
 use futures_util::{SinkExt, StreamExt};
 use std::{
@@ -15,9 +15,9 @@ use tokio_tungstenite::{
     WebSocketStream,
 };
 
-use crate::{websocket::{DownloadPayload, Event, Resume, UploadPayload}, client::audit_hook::AuditResult, api::message, model::MessageBotRecieved};
+use crate::websocket::{audit_hook::AuditResult, DownloadPayload, Event, Resume, UploadPayload};
 
-use super::{ClientEvent, ConnectConfig, Connection, ConnectionState, audit_hook::AuditHookPool};
+use super::{audit_hook::AuditHookPool, ClientEvent, ConnectConfig, Connection, ConnectionState};
 
 #[repr(transparent)]
 struct WsMessage(tungstenite::Message);
@@ -188,12 +188,16 @@ impl TungsteniteConnection {
                                         Event::MessageAuditPass(audit) => {
                                             let audit = audit.as_ref().clone();
                                             let audit_id = audit.audit_id.clone();
-                                            audit_hook_pool.resolve(&audit_id, AuditResult::Pass(audit)).await;
+                                            audit_hook_pool
+                                                .resolve(&audit_id, AuditResult::Pass(audit))
+                                                .await;
                                         }
                                         Event::MessageAuditReject(audit) => {
                                             let audit = audit.as_ref().clone();
                                             let audit_id = audit.audit_id.clone();
-                                            audit_hook_pool.resolve(&audit_id, AuditResult::Reject(audit)).await;
+                                            audit_hook_pool
+                                                .resolve(&audit_id, AuditResult::Reject(audit))
+                                                .await;
                                         }
                                         _ => {
                                             // 其他事件
@@ -261,7 +265,11 @@ impl TungsteniteConnection {
 #[async_trait::async_trait]
 impl Connection for TungsteniteConnection {
     type Error = TungsteniteConnectionError;
-    fn new(config: ConnectConfig, event_sender: broadcast::Sender<ClientEvent>, hook_pool: Arc<AuditHookPool>) -> Self {
+    fn new(
+        config: ConnectConfig,
+        event_sender: broadcast::Sender<ClientEvent>,
+        hook_pool: Arc<AuditHookPool>,
+    ) -> Self {
         Self {
             state: TungsteniteConnectionState::Disconnected {
                 resume: None,
@@ -270,7 +278,7 @@ impl Connection for TungsteniteConnection {
             config,
             event_sender,
             last_sequence: Arc::new(AtomicU32::new(0)),
-            audit_hook_pool: hook_pool
+            audit_hook_pool: hook_pool,
         }
     }
 

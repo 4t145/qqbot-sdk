@@ -1,5 +1,5 @@
 use crate::{
-    api::{
+    http::api::{
         guild::{GetGuild, GetGuildRequest},
         message::{PostMessage, PostMessageRequest},
         reaction::{
@@ -8,8 +8,8 @@ use crate::{
         },
         user::GetMe,
     },
-    client::audit_hook::AuditResult,
     model::{Guild, MessageSend, User},
+    websocket::audit_hook::AuditResult,
 };
 
 use super::*;
@@ -91,11 +91,11 @@ impl Bot {
     }
 
     pub async fn fetch_my_guilds(&self) -> Result<(), BotError> {
-        let mut req = crate::api::user::GetMyGuildsRequest::default();
+        let mut req = crate::http::api::user::GetMyGuildsRequest::default();
         loop {
             let guilds = self
                 .api_client
-                .send::<crate::api::user::GetMyGuilds>(&req)
+                .send::<crate::http::api::user::GetMyGuilds>(&req)
                 .await
                 .map_err(BotError::ApiError)?
                 .as_result()

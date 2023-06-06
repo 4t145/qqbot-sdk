@@ -6,23 +6,26 @@ mod shard;
 mod user;
 
 use crate::{
-    api::{
+    http::api::{
         websocket::{Gateway, GatewayBot},
         Authority,
     },
-    client::{reqwest_client::ApiClient, ClientEvent, ConnectConfig, Connection, audit_hook::AuditHookPool},
+    http::client::reqwest_client::ApiClient,
     model::Guild,
     websocket::Identify,
+    websocket::{audit_hook::AuditHookPool, ClientEvent, ConnectConfig, Connection},
 };
 use futures_util::Future;
 pub use message::*;
 pub use shard::Shards;
 use std::{
     collections::HashMap,
+    error::Error,
+    fmt::Display,
     ops::Deref,
     pin::Pin,
-    sync::{Arc, mpsc},
-    task::{Context, Poll}, error::Error, fmt::Display,
+    sync::Arc,
+    task::{Context, Poll},
 };
 use tokio::{sync::RwLock, task::JoinHandle};
 pub use user::*;
@@ -36,7 +39,7 @@ pub use self::handler::Handler;
 /// 可以随意克隆bot，内部全部有arc包裹, 且不提供可变性
 #[derive(Debug)]
 pub struct BotInner<
-    C: crate::client::Connection = crate::client::tungstenite_client::TungsteniteConnection,
+    C: crate::websocket::Connection = crate::websocket::tungstenite_client::TungsteniteConnection,
 > {
     api_client: ApiClient,
     event_tx: tokio::sync::broadcast::Sender<ClientEvent>,
@@ -74,7 +77,7 @@ impl<C: Connection> Drop for BotInner<C> {
 
 #[derive(Debug)]
 pub struct Bot<
-    C: crate::client::Connection = crate::client::tungstenite_client::TungsteniteConnection,
+    C: crate::websocket::Connection = crate::websocket::tungstenite_client::TungsteniteConnection,
 >(Arc<BotInner<C>>);
 
 impl Clone for Bot {
@@ -123,10 +126,8 @@ pub struct BotBuilder<'a> {
 pub enum BotBuildError {
     NoAuthority,
     ApiError(reqwest::Error),
-    WsConnectError(crate::client::tungstenite_client::TungsteniteConnectionError),
+    WsConnectError(crate::websocket::tungstenite_client::TungsteniteConnectionError),
 }
-
-
 
 impl<'a> BotBuilder<'a> {
     pub fn auth(self, authority: Authority<'a>) -> Self {
@@ -193,7 +194,8 @@ impl<'a> BotBuilder<'a> {
                     retry_interval: tokio::time::Duration::from_secs(30),
                     identify,
                 };
-                let conn_task = connect_option.start_connection_with_ctrl_c::<C>(event_tx.clone(), hook_pool.clone());
+                let conn_task = connect_option
+                    .start_connection_with_ctrl_c::<C>(event_tx.clone(), hook_pool.clone());
                 task_handles.push(conn_task);
             }
         } else {
@@ -211,7 +213,8 @@ impl<'a> BotBuilder<'a> {
                 retry_interval: tokio::time::Duration::from_secs(30),
                 identify,
             };
-            let _conn_task = connect_option.start_connection_with_ctrl_c::<C>(event_tx.clone(), hook_pool.clone());
+            let _conn_task = connect_option
+                .start_connection_with_ctrl_c::<C>(event_tx.clone(), hook_pool.clone());
             task_handles.push(_conn_task);
         }
 
@@ -229,7 +232,7 @@ impl<'a> BotBuilder<'a> {
 #[derive(Debug)]
 pub enum BotError {
     ApiError(reqwest::Error),
-    BadRequest(crate::api::ResponseFail),
+    BadRequest(crate::http::api::ResponseFail),
     BuildError(BotBuildError),
     AuditTimeout,
 }
@@ -253,8 +256,8 @@ impl From<reqwest::Error> for BotError {
     }
 }
 
-impl From<crate::api::ResponseFail> for BotError {
-    fn from(val: crate::api::ResponseFail) -> Self {
+impl From<crate::http::api::ResponseFail> for BotError {
+    fn from(val: crate::http::api::ResponseFail) -> Self {
         BotError::BadRequest(val)
     }
 }

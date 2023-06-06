@@ -8,6 +8,8 @@ mod intends;
 pub use intends::Intends;
 mod payload;
 pub use payload::*;
+mod client;
+pub use client::*;
 
 impl From<UploadPayload> for Payload {
     fn from(upload: UploadPayload) -> Self {

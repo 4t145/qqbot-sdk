@@ -7,19 +7,17 @@ use std::{error::Error, sync::Arc};
 
 use futures_util::{Future, FutureExt};
 use tokio::{
-    sync::{broadcast, Notify, mpsc},
+    sync::{broadcast, Notify},
     task::JoinHandle,
 };
 
 use crate::{
-    model::{MessageAudited, MessageBotRecieved, MessageReaction, MessageDeleted},
+    model::{MessageAudited, MessageBotRecieved, MessageDeleted, MessageReaction},
     websocket::{Event, Identify, Resume},
 };
 
-// pub mod awc_client;
-pub mod reqwest_client;
-pub mod tungstenite_client;
 pub(crate) mod audit_hook;
+pub mod tungstenite_client;
 use audit_hook::*;
 // pub mod actix_ws_client;
 
@@ -135,7 +133,11 @@ impl ConnectConfig {
 #[async_trait::async_trait]
 pub trait Connection {
     type Error: Error + Send + Sync + 'static;
-    fn new(connect_config: ConnectConfig, event_sender: broadcast::Sender<ClientEvent>, hook_poll: Arc<AuditHookPool>) -> Self;
+    fn new(
+        connect_config: ConnectConfig,
+        event_sender: broadcast::Sender<ClientEvent>,
+        hook_poll: Arc<AuditHookPool>,
+    ) -> Self;
     fn get_state(&self) -> ConnectionState;
     fn get_config(&self) -> &ConnectConfig;
     fn confict_state_err(state: ConnectionState, expected: ConnectionState) -> Self::Error;
@@ -313,4 +315,3 @@ impl TryFrom<Event> for ClientEvent {
         }
     }
 }
-

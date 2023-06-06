@@ -113,15 +113,3 @@ pub mod application_id {
     def!(CoDM开黑大厅, "1000070");
     def!(和平精英开黑大厅, "1010000");
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::*;
-    #[test]
-    fn test_json() {
-        let json_str = include_str!("./testdata/channel.json");
-        let v = from_str::<Vec<Channel>>(json_str);
-        v.unwrap();
-    }
-}

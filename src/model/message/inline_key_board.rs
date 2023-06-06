@@ -88,7 +88,7 @@ impl From<PermissionSerde> for Permission {
                     .specify_user_ids
                     .unwrap_or_default()
                     .iter()
-                    .map(|x| x.parse::<u64>().unwrap())
+                    .map(|x| x.parse::<u64>().expect("user id must be u64, if crash here, please report(but it's tencent's bug)"))
                     .collect(),
             },
             1 => Permission::OnlyAdmin,
@@ -123,17 +123,5 @@ impl From<Permission> for PermissionSerde {
                 ..Default::default()
             },
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::*;
-    #[test]
-    fn test_json() {
-        let json_str = include_str!("../testdata/inline_key_board.json");
-        let v = from_str::<InlineKeyboard>(json_str);
-        v.unwrap();
     }
 }

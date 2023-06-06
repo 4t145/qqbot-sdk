@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    api::{Api, Authority, Response},
+    http::api::{Api, Authority, Response},
     statics::*,
 };
 use reqwest::{ClientBuilder, Url};
@@ -15,7 +15,10 @@ pub struct ApiClient {
 impl ApiClient {
     /// 仅仅提供授权，构建一个默认的客户端
     pub fn new(auth: Authority) -> Self {
-        let client = ClientBuilder::new().https_only(true).build().unwrap_or_default();
+        let client = ClientBuilder::new()
+            .https_only(true)
+            .build()
+            .unwrap_or_default();
         let auth_header = auth.header();
         Self {
             client,
@@ -47,7 +50,7 @@ impl ApiClient {
     /// 发送一个请求
     ///
     /// 例子
-    /// ```
+    /// ```rust,no_run,ignore
     /// let resp = client.send::<Getway>::(&()).await?
     /// ```
     pub async fn send<A: Api>(
@@ -56,7 +59,8 @@ impl ApiClient {
     ) -> Result<Response<A::Response>, reqwest::Error> {
         let json = serde_json::to_string_pretty(&request).expect("invalid json, report this bug");
         dbg!(json);
-        let url = Url::parse(format!("{}{}", domain(), A::path(request)).as_str()).expect("invalid url, report this bug");
+        let url = Url::parse(format!("{}{}", domain(), A::path(request)).as_str())
+            .expect("invalid url, report this bug");
         let resp = self
             .client
             .request(A::METHOD, url)

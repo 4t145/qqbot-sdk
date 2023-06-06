@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use qqbot_sdk::{
-    api::{Authority, reaction::EmojiReactionDescriptor},
     bot::{Bot, BotBuilder, BotError, Handler, MessageBuilder},
-    client::ClientEvent,
-    websocket::Intends, model::{Emoji, RawEmoji},
+    http::api::{reaction::EmojiReactionDescriptor, Authority},
+    model::{Emoji, RawEmoji},
+    websocket::ClientEvent,
+    websocket::Intends,
 };
 
 #[tokio::main]
@@ -26,8 +27,10 @@ impl Handler for EchoHandler {
                     ctx.create_reaction(&EmojiReactionDescriptor {
                         channel_id: m.channel_id,
                         message_id: m.id,
-                        emoji: Emoji::Raw(RawEmoji::猴)
-                    }).await.unwrap_or_default();
+                        emoji: Emoji::Raw(RawEmoji::猴),
+                    })
+                    .await
+                    .unwrap_or_default();
                 }
                 ClientEvent::MessageDelete(m) => {
                     log::info!("message delete: {:?}", m);
@@ -35,23 +38,27 @@ impl Handler for EchoHandler {
                         m.message.channel_id,
                         &MessageBuilder::default()
                             // .reply_to_id(m.message.id)
-                            .content(format!("message delete").as_str())
+                            .content("message delete".to_string().as_str())
                             .build()
                             .unwrap(),
-                    ).await.unwrap();
+                    )
+                    .await
+                    .unwrap();
                 }
                 ClientEvent::AtMessageCreate(m) => {
                     let channel_id = m.channel_id;
                     let sender = &m.author.clone();
-                    match ctx.send_message(
-                        channel_id,
-                        &MessageBuilder::default()
-                            .content(m.content.as_str())
-                            .reply_to(m.as_ref())
-                            .build()
-                            .unwrap(),
-                    )
-                    .await {
+                    match ctx
+                        .send_message(
+                            channel_id,
+                            &MessageBuilder::default()
+                                .content(m.content.as_str())
+                                .reply_to(m.as_ref())
+                                .build()
+                                .unwrap(),
+                        )
+                        .await
+                    {
                         Ok(_) => log::info!("echo: {:?}", sender),
                         Err(e) => log::error!("echo: {:?}, error: {:?}", sender, e),
                     };
@@ -70,7 +77,11 @@ async fn async_main() -> Result<(), BotError> {
     };
     let bot = BotBuilder::default()
         .auth(auth)
-        .intents(Intends::PUBLIC_GUILD_MESSAGES | Intends::GUILD_MESSAGE_REACTIONS | Intends::GUILD_MESSAGES )
+        .intents(
+            Intends::PUBLIC_GUILD_MESSAGES
+                | Intends::GUILD_MESSAGE_REACTIONS
+                | Intends::GUILD_MESSAGES,
+        )
         .start()
         .await
         .unwrap();

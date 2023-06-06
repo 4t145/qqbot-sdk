@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::client::ClientEvent;
+use crate::websocket::ClientEvent;
 
 use super::{Bot, BotError};
 pub trait Handler: std::fmt::Debug + Send + Sync {
