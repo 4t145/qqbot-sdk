@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{str::FromStr, path::Display};
 
 use serde::{Deserialize, Serialize};
 mod raw_emoji;
@@ -19,11 +19,11 @@ pub enum Emoji {
     Raw(u32) = 2,
 }
 
-impl ToString for Emoji {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for Emoji {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Emoji::System(id) => format!("1:{}", id),
-            Emoji::Raw(id) => format!("2:{}", id),
+            Emoji::System(id) => write!(f, "1:{}", id),
+            Emoji::Raw(id) => write!(f, "2:{}", id),
         }
     }
 }
