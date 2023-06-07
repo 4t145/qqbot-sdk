@@ -10,7 +10,7 @@ use qqbot_sdk::{
 
 #[tokio::main]
 async fn main() {
-    std::env::set_var("RUST_LOG", "debug,qqbot_sdk=DEBUG");
+    std::env::set_var("RUST_LOG", "debug,qqbot_sdk=INFO");
     env_logger::builder().is_test(true).try_init().unwrap();
     async_main().await.unwrap();
 }

@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 mod raw_emoji;
 mod system_emoji;
@@ -15,6 +17,38 @@ use super::MessageBotRecieved;
 pub enum Emoji {
     System(u32) = 1,
     Raw(u32) = 2,
+}
+
+impl ToString for Emoji {
+    fn to_string(&self) -> String {
+        match self {
+            Emoji::System(id) => format!("1:{}", id),
+            Emoji::Raw(id) => format!("2:{}", id),
+        }
+    }
+}
+
+impl FromStr for Emoji {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut iter = s.split(':');
+        let tp = iter
+            .next()
+            .ok_or_else(|| format!("cannot parse emoji type from <{s}>"))?
+            .parse::<u32>()
+            .map_err(|e| format!("cannot parse emoji type from <{s}>: {e}"))?;
+        let id = iter
+            .next()
+            .ok_or_else(|| format!("cannot parse emoji id from <{s}>"))?
+            .parse::<u32>()
+            .map_err(|e| format!("cannot parse emoji id from <{s}>: {e}"))?;
+        match tp {
+            1 => Ok(Emoji::System(id)),
+            2 => Ok(Emoji::Raw(id)),
+            _ => Err(format!("unknown emoji type <{tp}>")),
+        }
+    }
 }
 
 impl TryFrom<EmojiJson> for Emoji {
