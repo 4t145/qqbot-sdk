@@ -26,7 +26,7 @@ impl Handler for EchoHandler {
                     // 贴猴
                     ctx.create_reaction(&EmojiReactionDescriptor {
                         channel_id: m.channel_id,
-                        message_id: m.id,
+                        message_id: m.id.clone(),
                         emoji: Emoji::Raw(RawEmoji::猴),
                     })
                     .await

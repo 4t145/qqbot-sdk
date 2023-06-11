@@ -93,7 +93,7 @@ impl Emoji {
     pub fn react_to(self, message: &MessageBotRecieved) -> EmojiReactionDescriptor {
         EmojiReactionDescriptor {
             channel_id: message.channel_id,
-            message_id: message.id,
+            message_id: message.id.clone(),
             emoji: self,
         }
     }

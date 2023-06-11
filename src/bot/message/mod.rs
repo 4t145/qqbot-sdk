@@ -22,7 +22,7 @@ impl<'a> MessageBuilder<'a> {
         self
     }
     pub fn reply_to(mut self, message: &'a MessageBotRecieved) -> Self {
-        self.reply_to = Some(message.id);
+        self.reply_to = Some(message.id.clone());
         self
     }
     pub fn reply_to_id(mut self, message_id: MessageId) -> Self {

@@ -63,7 +63,7 @@ impl<'a> PostMessageRequest<'a> {
             ark: message.ark.as_ref(),
             message_reference: message.message_reference.as_ref(),
             image: message.image,
-            msg_id: message.msg_id,
+            msg_id: message.msg_id.clone(),
             event_id: message.event_id,
             markdown: message.markdown.as_ref(),
         }
