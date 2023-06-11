@@ -40,11 +40,11 @@ impl FromStr for MessageSegment {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // don't parse channel, because it's not well supported
-        if s.starts_with("<@!") && s.ends_with('>') {
+        if s == "<@!everyone>" {
+            Ok(MessageSegment::AtAll)
+        } else if s.starts_with("<@!") && s.ends_with('>') {
             let id = s[3..s.len() - 1].parse::<u64>().map_err(|_| "Invalid id")?;
             Ok(MessageSegment::At(id))
-        } else if s == "@everyone" {
-            Ok(MessageSegment::AtAll)
         } else if s.starts_with("<emoji:") && s.ends_with('>') {
             let id = s[7..s.len() - 1].parse::<u64>().map_err(|_| "Invalid id")?;
             Ok(MessageSegment::Emoji(id))
@@ -72,38 +72,39 @@ impl ToString for MessageContent {
 impl FromStr for MessageContent {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.replace("@everyone", "<@!everyone>");
         let mut content = MessageContent::new();
         let mut buf = String::new();
         let mut seg_start = Option::<usize>::None;
         for (idx, c) in s.chars().enumerate() {
             match c {
                 '<' => {
-                    content.segments.push(MessageSegment::Text(buf));
-                    buf = String::new();
                     if seg_start.is_some() {
                         return Err(format!("Invalid '<' at {}", idx));
                     }
+                    if !buf.is_empty() {
+                        content.segments.push(buf.parse()?);
+                    }
+                    buf = String::new();
+                    buf.push(c);
                     seg_start.replace(idx);
+                    continue;
                 }
                 '>' => {
-                    if let Some(lb_idx) = seg_start.take() {
-                        content.segments.push(s[lb_idx..=idx].parse()?);
-                    } else {
+                    let Some(_lb_idx) = seg_start.take()else {
                         return Err(format!("Invalid '>' at {}", idx));
-                    }
-                }
-                '#' => {
-                    seg_start.replace(idx);
+                    };
+                    buf.push(c);
+                    content.segments.push(buf.parse()?);
+                    buf = String::new();
                 }
                 _ => {
-                    if seg_start.is_none() {
-                        buf.push(c);
-                    }
+                    buf.push(c);
                 }
             }
         }
         if !buf.is_empty() {
-            content.segments.push(MessageSegment::Text(buf));
+            content.segments.push(buf.parse()?);
         }
         Ok(content)
     }

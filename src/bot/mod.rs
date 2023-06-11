@@ -279,8 +279,6 @@ impl Future for Bot {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let health = self.is_conn_health();
         cx.waker().wake_by_ref();
-
-        dbg!("polling bot", health);
         if health {
             Poll::Pending
         } else {
