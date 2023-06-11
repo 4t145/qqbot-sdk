@@ -43,6 +43,6 @@ impl<'de> Deserialize<'de> for MessageId {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        MessageId::from_str(&s).map_err(|_| serde::de::Error::custom("invalid message id"))
+        MessageId::from_str(&s).map_err(|e| serde::de::Error::custom(format!("invalid message id, {e}")))
     }
 }
