@@ -18,7 +18,7 @@ pub struct MessageReaction {
 
 impl MessageReaction {
     pub fn into_unique_id(&self) -> String {
-        format!("{g}/{c}/{u}/{t}/{e}", g=self.guild_id, c=self.channel_id, u=self.channel_id, t=self.target.id, e=self.emoji)
+        format!("{g}/{c}/{u}/{t}/{e}", g=self.guild_id, c=self.channel_id, u=self.user_id, t=self.target.id, e=self.emoji)
     }
 }
 
