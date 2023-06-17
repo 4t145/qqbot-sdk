@@ -196,19 +196,19 @@ pub struct MessageEmbed {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MessageEmbedThumbnail {
     /// 图片地址
-    url: String,
+    pub url: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MessageEmbedField {
     /// 字段名
-    name: String,
+    pub name: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MessageAttachment {
     /// 下载地址
-    url: String,
+    pub url: String,
 }
 
 #[serde_as]
@@ -245,11 +245,11 @@ pub struct MessageArk {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MessageArkKv {
     /// key
-    key: String,
+    pub key: String,
     /// value
-    value: String,
+    pub value: String,
     /// arkobj类型的数组 ark obj类型的列表
-    obj: Vec<MessageArkObj>,
+    pub obj: Vec<MessageArkObj>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

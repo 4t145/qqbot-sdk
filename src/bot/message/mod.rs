@@ -4,6 +4,7 @@ use crate::model::{MessageBotRecieved, MessageId, MessageReference, MessageSend}
 pub struct MessageBuilder<'a> {
     content: Option<&'a str>,
     message_reference: Option<MessageReference>,
+    images: Vec<&'a str>,
     reply_to: Option<MessageId>,
 }
 
@@ -29,6 +30,10 @@ impl<'a> MessageBuilder<'a> {
         self.reply_to = Some(message_id);
         self
     }
+    pub fn images(mut self, images: impl IntoIterator<Item = &'a str>) -> Self {
+        self.images.extend(images);
+        self
+    }
     pub fn build(self) -> Result<MessageSend<'a>, String> {
         let mut message = MessageSend::default();
         if let Some(content) = self.content {
@@ -42,6 +47,7 @@ impl<'a> MessageBuilder<'a> {
         if let Some(reply_to) = self.reply_to {
             message.msg_id = Some(reply_to);
         }
+        message.image = self.images.first().copied();
         Ok(message)
     }
 }
