@@ -76,6 +76,7 @@ async fn async_main() -> Result<(), qqbot_sdk::Error> {
     bot.fetch_my_guilds().await?;
     tracing::info!("guilds count: {:?}", bot.cache().get_guilds_count().await);
     bot.event_service().spawn_handler("echo", EchoHandler).await;
+    
     // wait for ctrl-c
     // bot.await;
     // wait for ctrl-c
