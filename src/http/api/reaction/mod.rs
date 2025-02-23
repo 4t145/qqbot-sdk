@@ -35,7 +35,7 @@ impl Api for SendEmojiReaction {
 
     const METHOD: http::Method = http::Method::PUT;
 
-    fn path(request: &Self::Request) -> String {
+    fn path(request: &Self::Request) -> impl std::fmt::Display {
         format!(
             "/channels/{}/messages/{}/reactions/{}",
             request.channel_id,
@@ -89,7 +89,7 @@ impl Api for DeleteEmojiReaction {
 
     const METHOD: http::Method = http::Method::DELETE;
 
-    fn path(request: &Self::Request) -> String {
+    fn path(request: &Self::Request) -> impl std::fmt::Display {
         format!(
             "/channels/{}/messages/{}/reactions/{}",
             request.channel_id,
@@ -106,7 +106,7 @@ impl<'a> Api for GetEmojiReactionUserList<'a> {
 
     const METHOD: http::Method = http::Method::GET;
 
-    fn path(request: &Self::Request) -> String {
+    fn path(request: &Self::Request) -> impl std::fmt::Display {
         format!(
             "/channels/{}/messages/{}/reactions/{}",
             request.descriptor.channel_id,

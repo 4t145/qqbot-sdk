@@ -1,4 +1,4 @@
-use std::{str::FromStr, path::Display};
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 mod raw_emoji;
@@ -104,5 +104,3 @@ struct EmojiJson {
     r#type: u32,
     id: String,
 }
-
-

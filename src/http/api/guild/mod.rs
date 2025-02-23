@@ -17,7 +17,7 @@ impl Api for GetGuild {
 
     const METHOD: http::Method = http::Method::GET;
 
-    fn path(request: &Self::Request) -> String {
+    fn path(request: &Self::Request) -> impl std::fmt::Display {
         format!("/guilds/{}", request.guild_id)
     }
 }

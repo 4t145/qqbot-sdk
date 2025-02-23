@@ -2,7 +2,7 @@
 mod tests;
 
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::{DisplayFromStr, serde_as};
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq)]

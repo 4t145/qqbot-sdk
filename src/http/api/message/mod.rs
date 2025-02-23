@@ -15,7 +15,7 @@ impl Api for GetMessage {
 
     const METHOD: http::Method = http::Method::GET;
 
-    fn path(request: &Self::Request) -> String {
+    fn path(request: &Self::Request) -> impl std::fmt::Display {
         format!("/{}", request.into_sub_path())
     }
 }
@@ -77,7 +77,7 @@ impl<'a> Api for PostMessage<'a> {
 
     const METHOD: http::Method = http::Method::POST;
 
-    fn path(request: &Self::Request) -> String {
+    fn path(request: &Self::Request) -> impl std::fmt::Display {
         format!(
             "/channels/{channel_id}/messages",
             channel_id = request.channel_id
@@ -103,7 +103,7 @@ impl Api for DeleteMessage {
 
     const METHOD: http::Method = http::Method::DELETE;
 
-    fn path(request: &Self::Request) -> String {
+    fn path(request: &Self::Request) -> impl std::fmt::Display {
         format!("/{}", request.into_sub_path())
     }
 }

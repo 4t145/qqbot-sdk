@@ -1,10 +1,10 @@
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, str::FromStr, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
 /// message id, 三个u64组成，大端序
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct MessageId(String);
+pub struct MessageId(Arc<str>);
 
 impl Display for MessageId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -20,7 +20,7 @@ impl FromStr for MessageId {
         if s.is_empty() {
             return Err("invalid message id (empty)");
         }
-        Ok(MessageId(s.to_string()))
+        Ok(MessageId(s.to_string().into()))
     }
 }
 // 64*3/4 = 48
@@ -39,6 +39,7 @@ impl<'de> Deserialize<'de> for MessageId {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        MessageId::from_str(&s).map_err(|e| serde::de::Error::custom(format!("invalid message id, {e}")))
+        MessageId::from_str(&s)
+            .map_err(|e| serde::de::Error::custom(format!("invalid message id, {e}")))
     }
 }

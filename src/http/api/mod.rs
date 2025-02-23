@@ -1,70 +1,31 @@
+pub mod app;
 pub mod guild;
 pub mod message;
 pub mod reaction;
 pub mod user;
 pub mod websocket;
-
-use crate::statics::*;
 use std::fmt::Display;
 
 use http::{
-    header::{AUTHORIZATION, CONTENT_TYPE},
     Method, Request,
+    header::{AUTHORIZATION, CONTENT_TYPE},
 };
 use serde::{Deserialize, Serialize};
-#[derive(Clone, Debug)]
-/// 授权
-pub enum Authority<'a> {
-    Bot { app_id: &'a str, token: &'a str },
-    Bearer { token: &'a str },
-}
 
-impl<'a> From<Authority<'a>> for String {
-    fn from(val: Authority<'a>) -> Self {
-        val.token()
-    }
-}
-
-impl<'a> Authority<'a> {
-    pub fn new_bot(app_id: impl Into<&'a str>, token: impl Into<&'a str>) -> Self {
-        Authority::Bot {
-            app_id: app_id.into(),
-            token: token.into(),
-        }
-    }
-    pub fn new_bearer(token: impl Into<&'a str>) -> Self {
-        Authority::Bearer {
-            token: token.into(),
-        }
-    }
-    pub fn token(&self) -> String {
-        match self {
-            Authority::Bot { app_id, token } => format!("Bot {app_id}.{token}"),
-            Authority::Bearer { token } => format!("Bearer {token}"),
-        }
-    }
-
-    pub fn header(&self) -> String {
-        match self {
-            Authority::Bot { app_id, token } => format!("Bot {app_id}.{token}"),
-            Authority::Bearer { token } => format!("Bearer {token}"),
-        }
-    }
-}
 pub trait Api {
     type Request: Serialize;
     type Response: for<'a> Deserialize<'a>;
     const METHOD: Method;
     const PATH: &'static str = "";
-    fn path(_request: &Self::Request) -> String {
-        Self::PATH.to_string()
+    fn path(_request: &Self::Request) -> impl std::fmt::Display {
+        Self::PATH
     }
 }
 
-pub fn json_request<A: Api>(request: &A::Request, auth: &str) -> Request<Vec<u8>> {
+pub fn json_request<A: Api>(request: &A::Request, base_url: &str, auth: &str) -> Request<Vec<u8>> {
     let body = serde_json::to_vec::<A::Request>(request).expect("fail to serialize json request");
     Request::builder()
-        .uri(format!("{}{}", domain(), A::path(request)))
+        .uri(format!("{}{}", base_url, A::path(request)))
         .header(AUTHORIZATION, auth)
         .header(CONTENT_TYPE, "application/json")
         .method(A::METHOD)
@@ -93,7 +54,7 @@ impl Display for ResponseFail {
 
 impl Drop for ResponseFail {
     fn drop(&mut self) {
-        log::error!("{}", self.message);
+        tracing::error!("{}", self.message);
     }
 }
 

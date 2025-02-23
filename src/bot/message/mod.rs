@@ -34,13 +34,11 @@ impl<'a> MessageBuilder<'a> {
         self.images.extend(images);
         self
     }
-    pub fn build(self) -> Result<MessageSend<'a>, String> {
-        let mut message = MessageSend::default();
-        if let Some(content) = self.content {
-            message.content = Some(content);
-        } else {
-            return Err("No content".to_string());
-        }
+    pub fn build(self) -> MessageSend<'a> {
+        let mut message = MessageSend {
+            content: self.content,
+            ..Default::default()
+        };
         if let Some(message_reference) = self.message_reference {
             message.message_reference = Some(message_reference);
         }
@@ -48,6 +46,6 @@ impl<'a> MessageBuilder<'a> {
             message.msg_id = Some(reply_to);
         }
         message.image = self.images.first().copied();
-        Ok(message)
+        message
     }
 }

@@ -23,14 +23,14 @@ pub enum MessageSegment {
     Emoji(u64),
 }
 
-impl ToString for MessageSegment {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for MessageSegment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MessageSegment::Text(s) => encode(s.as_str()),
-            MessageSegment::At(id) => format!("<@!{}>", id),
-            MessageSegment::AtAll => "@everyone".to_string(),
-            MessageSegment::Channel(id) => format!("<#{}>", id),
-            MessageSegment::Emoji(id) => format!("<emoji:{}>", id),
+            MessageSegment::Text(s) => write!(f, "{}", encode(s.as_str())),
+            MessageSegment::At(id) => write!(f, "<@!{}>", id),
+            MessageSegment::AtAll => write!(f, "@everyone"),
+            MessageSegment::Channel(id) => write!(f, "<#{}>", id),
+            MessageSegment::Emoji(id) => write!(f, "<emoji:{}>", id),
         }
     }
 }
@@ -58,14 +58,12 @@ impl FromStr for MessageSegment {
 pub struct MessageContent {
     pub segments: Vec<MessageSegment>,
 }
-
-impl ToString for MessageContent {
-    fn to_string(&self) -> String {
-        self.segments
-            .iter()
-            .map(|seg| seg.to_string())
-            .collect::<Vec<_>>()
-            .join("")
+impl std::fmt::Display for MessageContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for seg in &self.segments {
+            write!(f, "{}", seg)?;
+        }
+        Ok(())
     }
 }
 
@@ -91,7 +89,7 @@ impl FromStr for MessageContent {
                     continue;
                 }
                 '>' => {
-                    let Some(_lb_idx) = seg_start.take()else {
+                    let Some(_lb_idx) = seg_start.take() else {
                         return Err(format!("Invalid '>' at {}", idx));
                     };
                     buf.push(c);

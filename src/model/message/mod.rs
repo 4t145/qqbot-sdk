@@ -1,7 +1,7 @@
 use super::*;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::{DisplayFromStr, serde_as};
 mod markdown;
 pub use markdown::*;
 pub use message_id::*;
@@ -301,4 +301,10 @@ pub struct MessageAudited {
     #[serde_as(as = "DisplayFromStr")]
     /// 子频道消息 seq，用于消息间的排序，seq 在同一子频道中按从先到后的顺序递增，不同的子频道之间消息无法排序
     pub seq_in_channel: u64,
+}
+
+impl MessageAudited {
+    pub fn passed(&self) -> bool {
+        self.message_id.is_some()
+    }
 }
