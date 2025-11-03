@@ -23,7 +23,7 @@ tokio-util = { version = "0.7" }
 # headers = "0.4.0"
 [dependencies.axum-extra]
 # features = ["typed-header"]
-version = "0.10"
+version = "0.12"
 [dependencies.tracing]
 version = "0.1"
 
